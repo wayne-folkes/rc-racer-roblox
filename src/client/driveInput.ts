@@ -20,6 +20,10 @@ const RESET_KEYS = [Enum.KeyCode.R, Enum.KeyCode.ButtonY];
 const FIRE_KEYS = [Enum.KeyCode.X, Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonB];
 const STICK_DEADZONE = 0.18;
 
+/** The controls, as shown along the bottom of the screen for the device in use. */
+const KEYBOARD_HINT = 'WASD / arrows to drive · Space to drift · X to use item · R to reset';
+const GAMEPAD_HINT = 'RT to drive · LT to brake · LB / RB to drift · B to use item · Y to reset';
+
 const deadzone = (v: number) => {
   const mag = math.abs(v);
   if (mag < STICK_DEADZONE) return 0;
@@ -139,8 +143,11 @@ export class DriveInput {
       this.touchButton(gui, 'brake', 'BRAKE', new UDim2(1, -214, 1, -120));
       this.touchButton(gui, 'handbrake', 'DRIFT', new UDim2(1, -114, 1, -220));
       this.tapButton(gui, 'ITEM', new UDim2(1, -214, 1, -220), () => (this.firePressed = true));
-    } else {
-      // Bottom centre: Roblox's own buttons take the top-left corner.
+    }
+
+    // Bottom centre: Roblox's own buttons take the top-left corner. It follows the device last
+    // used, so it changes when someone picks up a gamepad; on touch the buttons say it all.
+    {
       const hint = new Instance('TextLabel');
       hint.BackgroundTransparency = 1;
       hint.AnchorPoint = new Vector2(0.5, 1);
@@ -150,7 +157,15 @@ export class DriveInput {
       hint.TextSize = 16;
       hint.TextColor3 = new Color3(1, 1, 1);
       hint.TextStrokeTransparency = 0.5;
-      hint.Text = 'WASD / arrows to drive · Space to drift · X to use item · R to reset';
+      hint.Size = new UDim2(0, 640, 0, 24);
+      const show = (inputType: Enum.UserInputType) => {
+        if (inputType === Enum.UserInputType.Touch) hint.Text = '';
+        else if (inputType.Name.sub(1, 7) === 'Gamepad') hint.Text = GAMEPAD_HINT;
+        else if (inputType === Enum.UserInputType.Keyboard || inputType.Name.sub(1, 5) === 'Mouse') hint.Text = KEYBOARD_HINT;
+      };
+      hint.Text = UserInputService.TouchEnabled && !UserInputService.KeyboardEnabled ? '' : KEYBOARD_HINT;
+      show(UserInputService.GetLastInputType());
+      UserInputService.LastInputTypeChanged.Connect(show);
       hint.Parent = gui;
     }
 

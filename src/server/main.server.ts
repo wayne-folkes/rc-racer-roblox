@@ -1,28 +1,36 @@
 import { DEFAULT_TUNING } from 'shared/carPhysics';
+import { countVotes, Cup, voteOptions, winningOption, type Scorer, type VoteOption } from 'shared/cup';
 import { GRID_SIZE } from 'shared/grid';
 import { COUNTDOWN_SECONDS, TOTAL_LAPS } from 'shared/race';
 import { RaceSim, type Entrant } from 'shared/raceSim';
 import {
   NET_FOLDER,
-  NEXT_LOBBY_SECONDS,
   REMOTE,
   SEND_RATE,
   type Phase,
   type RaceStateMessage,
 } from 'shared/protocol';
-import { MEADOW_LOOP, trackPath } from 'shared/tracks';
+import type { TrackPath } from 'shared/trackPath';
+import { trackById, TRACKS, trackPath, type CircuitId, type TrackDef } from 'shared/tracks';
 
-// Runs the races: a lobby timer, then a race on the grid with AI filling the slots players don't
-// take, results, and round again. Everyone in the server when the lobby timer runs out races (up to
-// GRID_SIZE); anyone who joins later watches until the next one.
+// Runs the races. Players vote between the two cups and two quick races; a cup is four races with
+// points for every place (shared/cup.ts), a quick race is one. Each race has AI filling the grid
+// slots players don't take, then results, and on to the next race of the cup or the next vote.
+// Everyone in the server when a race starts races (up to GRID_SIZE); anyone who joins later watches
+// until the next one, and joins a cup with no points.
 
 const Players = game.GetService('Players');
 const RunService = game.GetService('RunService');
 const ReplicatedStorage = game.GetService('ReplicatedStorage');
 
-/** The wait for the first race, so friends have time to join. */
-const FIRST_LOBBY_SECONDS = 20;
+/** The first vote is longer, so friends have time to join. */
+const FIRST_VOTE_SECONDS = 20;
+const VOTE_SECONDS = 15;
+/** The wait between the races of a cup. */
+const LOBBY_SECONDS = 10;
 const RESULTS_SECONDS = 10;
+/** The results after a cup's last race stay up longer: they're the cup's final standings. */
+const CUP_RESULTS_SECONDS = 15;
 /** Once the first player finishes, the rest have this long before the race ends. */
 const FINISH_GRACE_SECONDS = 30;
 const STEP = 1 / 120;
@@ -47,6 +55,9 @@ carStateRemote.Parent = net;
 const snapshotRemote = new Instance('UnreliableRemoteEvent');
 snapshotRemote.Name = REMOTE.snapshot;
 snapshotRemote.Parent = net;
+const voteRemote = new Instance('RemoteEvent');
+voteRemote.Name = REMOTE.vote;
+voteRemote.Parent = net;
 const raceStateRemote = new Instance('RemoteEvent');
 raceStateRemote.Name = REMOTE.raceState;
 raceStateRemote.Parent = net;
@@ -58,8 +69,19 @@ itemEventsRemote.Name = REMOTE.itemEvents;
 itemEventsRemote.Parent = net;
 net.Parent = ReplicatedStorage;
 
-const track = trackPath(MEADOW_LOOP);
 const now = () => game.Workspace.GetServerTimeNow();
+
+const paths = new Map<string, TrackPath>();
+function pathOf(def: TrackDef): TrackPath {
+  let path = paths.get(def.id);
+  if (!path) {
+    path = trackPath(def);
+    paths.set(def.id, path);
+  }
+  return path;
+}
+
+type Mode = { kind: 'cup'; cup: Cup } | { kind: 'quick'; track: TrackDef };
 
 /** Players in the order they joined: the earliest get places on the grid first. */
 const joined: Player[] = [];
@@ -68,6 +90,13 @@ let phaseEndsAt = 0;
 let sim: RaceSim | undefined;
 let raceId = 0;
 let goAt = 0;
+let mode: Mode | undefined;
+/** The track being raced or about to be: every device builds it. */
+let track: TrackDef = TRACKS[0];
+/** The vote under way: the choices, and each player's pick by user id. */
+let vote: { options: VoteOption[]; picks: Map<number, number> } | undefined;
+/** Who scores for each car of the race, fixed at the start so a player's points stay theirs. */
+let scorers: Scorer[] = [];
 /** Each player car's last accepted report, by racer index, for the speed check. */
 const lastReport = new Map<number, { t: number; x: number; z: number }>();
 
@@ -89,7 +118,39 @@ function stateMessage(): RaceStateMessage {
     items: sim ? sim.items.status.map((s) => s.item ?? '') : [],
     bombs: bombList(),
     pickupsDown: sim ? sim.items.pickups.filter((p) => p.respawn > 0).map((p) => p.id) : [],
+    trackId: track.id,
+    modeLabel: modeLabel(),
+    voteOptions: vote ? vote.options.map((o) => o.label) : [],
+    voteCounts: vote ? voteCounts(vote) : [],
+    cup:
+      mode?.kind === 'cup'
+        ? mode.cup.standings().map((r) => ({
+            name: r.name,
+            color: r.color,
+            points: r.points,
+            lastPoints: r.lastPoints,
+            userId: r.userId,
+          }))
+        : [],
+    cupFinal: mode?.kind === 'cup' && mode.cup.done() && phase === 'results',
   };
+}
+
+function voteCounts(v: { options: VoteOption[]; picks: Map<number, number> }): number[] {
+  const picks: number[] = [];
+  for (const [, pick] of v.picks) picks.push(pick);
+  return countVotes(v.options.size(), picks);
+}
+
+function modeLabel(): string {
+  if (phase === 'vote') return 'Vote for the next race';
+  if (!mode) return '';
+  if (mode.kind === 'quick') return 'Quick race';
+  const { cup } = mode;
+  const total = cup.tracks.size();
+  // During the results the race just scored is the one shown.
+  const race = phase === 'results' ? cup.round : math.min(cup.round + 1, total);
+  return `${cup.name()} · Race ${race} of ${total}`;
 }
 
 function bombList(): number[] {
@@ -106,14 +167,40 @@ function enterPhase(to: Phase, seconds = 0) {
   broadcastState();
 }
 
+function startVote(seconds: number) {
+  mode = undefined;
+  vote = { options: voteOptions(() => math.random()), picks: new Map() };
+  enterPhase('vote', seconds);
+}
+
+/** Most votes wins; a tie, or nobody voting, is settled at random. */
+function closeVote() {
+  if (!vote) return;
+  const option = vote.options[winningOption(voteCounts(vote), () => math.random())];
+  vote = undefined;
+  const quick = option.kind === 'quick' ? trackById(option.id) : undefined;
+  mode = quick ? { kind: 'quick', track: quick } : { kind: 'cup', cup: new Cup(option.id as CircuitId) };
+  startRace();
+}
+
 function startRace() {
+  if (!mode) return;
+  const upcoming = mode.kind === 'cup' ? mode.cup.nextTrack() : mode.track;
+  if (!upcoming) return;
+  track = upcoming;
   const entrants: Entrant[] = [];
   for (const p of joined) {
     if (entrants.size() < GRID_SIZE) entrants.push({ name: p.DisplayName, userId: p.UserId });
   }
   raceId++;
   // A fresh hazard layout every race; players' devices roll the same one from this seed.
-  sim = new RaceSim(track, entrants, math.random(1, 2 ** 30));
+  sim = new RaceSim(pathOf(track), entrants, math.random(1, 2 ** 30), track.layout);
+  scorers = sim.racers.map((r) => ({
+    key: r.userId !== 0 ? `player:${r.userId}` : `ai:${r.name}`,
+    name: r.name,
+    color: r.color,
+    userId: r.userId,
+  }));
   lastReport.clear();
   goAt = now() + COUNTDOWN_SECONDS;
   enterPhase('countdown', COUNTDOWN_SECONDS);
@@ -125,9 +212,34 @@ function raceOver(s: RaceSim): boolean {
   return first !== undefined && s.race.clock - first >= FINISH_GRACE_SECONDS;
 }
 
+/** The race is over: score it if it's part of a cup, and show the results. */
+function finishRace(s: RaceSim) {
+  let seconds = RESULTS_SECONDS;
+  if (mode?.kind === 'cup') {
+    mode.cup.addRace(s.race.standings().map((i) => scorers[i]));
+    if (mode.cup.done()) seconds = CUP_RESULTS_SECONDS;
+  }
+  enterPhase('results', seconds);
+}
+
+/** After the results: the cup's next race, or a new vote. */
+function afterResults() {
+  sim = undefined;
+  goAt = 0;
+  if (joined.size() === 0) {
+    mode = undefined;
+    enterPhase('waiting');
+  } else if (mode?.kind === 'cup' && !mode.cup.done()) {
+    track = mode.cup.nextTrack()!;
+    enterPhase('lobby', LOBBY_SECONDS);
+  } else {
+    startVote(VOTE_SECONDS);
+  }
+}
+
 function addPlayer(player: Player) {
   joined.push(player);
-  if (phase === 'waiting') enterPhase('lobby', FIRST_LOBBY_SECONDS);
+  if (phase === 'waiting') startVote(FIRST_VOTE_SECONDS);
   else broadcastState();
 }
 
@@ -141,8 +253,19 @@ Players.PlayerRemoving.Connect((player) => {
     const index = sim.indexOf(player.UserId);
     if (index >= 0) sim.standIn(index);
   }
-  if (phase === 'lobby' && joined.size() === 0) enterPhase('waiting');
-  else broadcastState();
+  if (vote) vote.picks.delete(player.UserId);
+  if ((phase === 'vote' || phase === 'lobby') && joined.size() === 0) {
+    vote = undefined;
+    mode = undefined;
+    enterPhase('waiting');
+  } else broadcastState();
+});
+
+voteRemote.OnServerEvent.Connect((player, pick) => {
+  if (!vote || phase !== 'vote' || !typeIs(pick, 'number')) return;
+  if (pick !== math.floor(pick) || pick < 0 || pick >= vote.options.size()) return;
+  vote.picks.set(player.UserId, pick);
+  broadcastState();
 });
 
 const isNumber = (v: unknown): v is number => typeIs(v, 'number') && v === v;
@@ -176,7 +299,8 @@ let sinceState = 0;
 
 RunService.Heartbeat.Connect((dt) => {
   const t = now();
-  if (phase === 'lobby' && t >= phaseEndsAt) startRace();
+  if (phase === 'vote' && t >= phaseEndsAt) closeVote();
+  else if (phase === 'lobby' && t >= phaseEndsAt) startRace();
 
   if (sim) {
     accumulator += math.min(dt, 0.1);
@@ -193,13 +317,8 @@ RunService.Heartbeat.Connect((dt) => {
     }
 
     if (phase === 'countdown' && sim.race.phase !== 'countdown') enterPhase('racing');
-    else if (phase === 'racing' && raceOver(sim)) enterPhase('results', RESULTS_SECONDS);
-    else if (phase === 'results' && t >= phaseEndsAt) {
-      sim = undefined;
-      goAt = 0;
-      if (joined.size() > 0) enterPhase('lobby', NEXT_LOBBY_SECONDS);
-      else enterPhase('waiting');
-    }
+    else if (phase === 'racing' && raceOver(sim)) finishRace(sim);
+    else if (phase === 'results' && t >= phaseEndsAt) afterResults();
   }
 
   sinceSnapshot += dt;

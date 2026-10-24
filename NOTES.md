@@ -37,7 +37,12 @@ brake, the stick or d-pad to steer, a bumper to drift, Y to reset; on touch, on-
 | Multiplayer race sim | ✅ in Node: full races with simulated players' devices reporting at 20 Hz finish, standings follow finish times, players fill the back of the grid in join order, and a player who leaves is driven home by an AI |
 | Ported items and ramps match the web game | ✅ in Node: the hazard dice give exactly the web game's numbers, item boxes, boost pads and ramps land within 2e-13, and a 60-second AI race with items ends within 3e-13 with the same pickups, missiles, bombs, hits and jumps |
 | Items in a multiplayer race | ✅ in Node: in a 2-player race, AI and players pick up items, fire missiles and drop bombs, and hits land on AI and players alike (15 pickups, 6 missiles, 9 bombs, 11 hits, 5 on players) |
-| Items in Studio | ⏳ not yet checked |
+| Items in Studio | Partly: item boxes, boost pads, puddles and oil seen (2026-10-23); firing, hits and jumps not yet confirmed |
+| All tracks match the web game | ✅ in Node: all 16 (8 tracks, both ways) have the web's control points, layouts and themes exactly, and their splines agree to within 7e-13 |
+| Every track races | ✅ in Node: a full 3-lap race with items finishes on all 16 with no AI car stuck (73 s on Meadow Loop to 137 s on Olympus Rally reversed) |
+| Cups and votes | ✅ in Node: vote options, counting, random tie-breaks, and cup points and standings |
+| Scenery and meteors match the web game | ✅ in Node: scenery plans keep clear of the road on all 16 tracks (and matched the web's placement exactly in a one-off comparison); meteor timings, landings and crater limits follow the web's |
+| Cups, votes, other tracks, scenery and weather in Studio | ⏳ not yet checked |
 | Multiplayer in Studio | ✅ (2026-10-23) a 2-player test races the AI and bumps feel right, after drawing other cars where they really are rather than easing behind them |
 | Opens in Studio and drives round Meadow Loop | ✅ (2026-10-23) the track builds with no gaps on the bends, the car drives round it, and the camera matches the web game's view |
 
@@ -105,10 +110,18 @@ Friends in the same server race each other, with AI cars filling the grid.
 - **Grid:** 6 cars. Players take slots from the back in the order they joined, as the web game's
   player starts at the back; AI cars (`shared/grid.ts`) fill the rest from pole. A seventh player
   watches until a slot is free.
-- **Flow** (`server/main.server.ts`): the first player in starts a 20-second lobby timer, and
-  everyone in the server when it runs out races. Then 3-2-1, three laps, results for 10 seconds,
-  and a 10-second lobby before the next race. Once the first player finishes, the rest have 30
-  seconds. Between races you can drive anywhere; anyone who joins mid-race watches the leader.
+- **Cups and quick races** (`shared/cup.ts`, `server/main.server.ts`): between races, players vote
+  for the Classic Cup, the Space Cup, or a quick race on one of two random tracks (any of the eight,
+  either way round); most votes wins, and a tie or no votes is settled at random. A cup is four
+  races scored 15-12-10-8-6-4 for 1st to 6th, AI cars included, as in Mario Kart; level points go
+  to the best single finish. The first vote lasts 20 seconds, later ones 15; between a cup's races
+  there's a 10-second lobby. Each race is 3-2-1, three laps, then results (with the cup standings)
+  for 10 seconds, 15 after a cup's last race. Once the first player finishes, the rest have 30
+  seconds. Between races you can drive anywhere; anyone who joins mid-race watches the leader and
+  joins a cup with no points. Vote by clicking or tapping, with 1–4, or with a gamepad's D-pad and A.
+- **Tracks** (`shared/tracks.ts`, `shared/spaceTracks.ts`): all eight of the web's tracks, each
+  either way round, ported with their item layouts and themes. Every device builds the track the
+  server names, and rebuilds when it changes.
 - **Who runs what:** the server runs the race (`shared/raceSim.ts`: AI driving, laps, positions,
   results) at 120 Hz. Each player's device drives that player's car, so it answers the controls
   instantly, and reports it 20 times a second. The server sends every car's position 20 times a
@@ -161,8 +174,17 @@ Friends in the same server race each other, with AI cars filling the grid.
    rounded missile nose because Roblox has no cone Part; boost pads are the web's chasing
    chevron arrows, each a ">" of two bars; oil and puddles are the web's seeded blobs, each a fan
    of triangles built from pairs of WedgeParts (Roblox has no polygon Part).
-3. **Season, garage, other tracks and themes, scenery**: logic ports; the 8 tracks' scenery and
-   weather need rebuilding; a vote or rotation for the next track: **4–6 days.**
+3. ~~**Other tracks, cups, voting, scenery, weather**~~: done. Each theme's scenery
+   (`client/scenery.ts`: trees, cacti, pines, craters, mesas, volcanoes, ice and cracks, plus water
+   and lava ponds) lands exactly where the web's does (checked in Node against the web's own
+   placement on all 16 tracks), built from Parts: cones are stacks of three cylinders, rocks are
+   squashed spheres, at most 1,200 Parts a track. Weather (`client/weather.ts`: snow, dust,
+   embers and glitter as ParticleEmitters following the camera, tumbleweeds as rolling Parts) and
+   the Space Cup's meteors (`client/meteors.ts`: streak, flash, shockwave, rocks and a crater, at
+   most 12 craters kept) follow the web's timings and seeded randomness; they're purely for looks.
+   Water ponds use the puddles' look rather than the web's plain pond colour. The web's
+   single-player season (prize money, upgrades, the garage) isn't ported: it would need saving
+   (step 6) to work across sessions.
 4. **Menus** in ScreenGui (title, garage, settings): **3–4 days.**
 5. **Sound**: record the synthesized sounds to files, upload, wait for moderation: **1–2 days.**
 6. **Saving and leaderboards** with DataStoreService: **1–2 days.**

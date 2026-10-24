@@ -3,6 +3,7 @@
 //
 //   player → server  CarState   (unreliable, 20 Hz): raceId, x, z, heading, steer, vx, vz, y
 //   player → server  UseItem    (reliable): raceId, when the player fires or drops their item
+//   player → server  Vote       (reliable): the index of the option the player picks in a vote
 //   server → all     Snapshot   (unreliable, 20 Hz): server time, CAR_FIELDS numbers per racer,
 //                               then MISSILE_FIELDS numbers per missile in flight
 //   server → all     RaceState  (reliable, 4 Hz, on every phase change and after item events):
@@ -15,11 +16,10 @@ export const REMOTE = {
   snapshot: 'Snapshot',
   raceState: 'RaceState',
   useItem: 'UseItem',
+  vote: 'Vote',
   itemEvents: 'ItemEvents',
 } as const;
 
-/** The wait between one race's results and the next race's grid. */
-export const NEXT_LOBBY_SECONDS = 10;
 
 /** How often cars are reported, each way. */
 export const SEND_RATE = 20;
@@ -30,10 +30,22 @@ export const CAR_FIELDS = 7;
 export const MISSILE_FIELDS = 4;
 
 /**
- * waiting: nobody here. lobby: the timer to the next race is running. countdown: on the grid, 3-2-1.
- * racing: GO until the race is over. results: standings on screen before the next lobby.
+ * waiting: nobody here. vote: choosing a cup or a quick race. lobby: the wait before the next race of
+ * a cup. countdown: on the grid, 3-2-1. racing: GO until the race is over. results: the race's
+ * results (and the cup standings) before the next lobby or vote.
  */
-export type Phase = 'waiting' | 'lobby' | 'countdown' | 'racing' | 'results';
+export type Phase = 'waiting' | 'vote' | 'lobby' | 'countdown' | 'racing' | 'results';
+
+/** A row of the cup standings. */
+export interface StandingView {
+  name: string;
+  color: string;
+  points: number;
+  /** Points from the latest race. */
+  lastPoints: number;
+  /** 0 for an AI car. */
+  userId: number;
+}
 
 export interface RacerView {
   name: string;
@@ -70,4 +82,15 @@ export interface RaceStateMessage {
   bombs: number[];
   /** Ids of item boxes that have been taken and haven't come back yet. */
   pickupsDown: number[];
+  /** The track being raced, or about to be: what every device builds. */
+  trackId: string;
+  /** What's being raced, e.g. 'Classic Cup · Race 2 of 4' or 'Quick race'. */
+  modeLabel: string;
+  /** In a vote: the choices, and the votes for each so far. Empty otherwise. */
+  voteOptions: string[];
+  voteCounts: number[];
+  /** The cup standings, leader first; empty for a quick race. */
+  cup: StandingView[];
+  /** True on the results after a cup's last race. */
+  cupFinal: boolean;
 }

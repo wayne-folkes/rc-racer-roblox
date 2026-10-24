@@ -31,16 +31,14 @@ export class RemoteCars {
   private latestTime = -math.huge;
   private latest: number[] = [];
 
-  constructor(private readonly track: TrackPath) {}
-
-  /** A new race: one car per racer except ours, waiting on its grid slot. */
-  setRacers(racers: RacerView[], myIndex: number): void {
+  /** A new race: one car per racer except ours, waiting on its grid slot on `track`. */
+  setRacers(racers: RacerView[], myIndex: number, track: TrackPath): void {
     this.clear();
     racers.forEach((r, i) => {
       if (i === myIndex) return;
       const model = new CarModel(Color3.fromHex(r.color), r.name);
       model.setLabel(r.name);
-      const start = gridPosition(this.track, r.gridSlot);
+      const start = gridPosition(track, r.gridSlot);
       this.cars.set(i, { model, shown: { ...start }, now: { ...start } });
     });
   }

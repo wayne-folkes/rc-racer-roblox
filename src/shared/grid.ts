@@ -14,13 +14,15 @@ export interface AiRacer {
   skill: AiSkill;
 }
 
-/** In grid order: the quickest starts on pole. The first three are the web game's opponents. */
+/** In grid order: the quickest starts on pole. Blue, Yellow and Green are the web game's opponents. */
 export const AI_RACERS: AiRacer[] = [
   { name: 'Blue', color: '#3b82f6', skill: { pace: 0.87, steerGain: 2.6 } },
   { name: 'Purple', color: '#8b5cf6', skill: { pace: 0.855, steerGain: 2.45 } },
   { name: 'Yellow', color: '#facc15', skill: { pace: 0.84, steerGain: 2.3 } },
   { name: 'Orange', color: '#f97316', skill: { pace: 0.825, steerGain: 2.15 } },
   { name: 'Green', color: '#22c55e', skill: { pace: 0.81, steerGain: 2.0 } },
+  // Only races when no players are on the grid, e.g. in tests.
+  { name: 'Silver', color: '#94a3b8', skill: { pace: 0.8, steerGain: 1.95 } },
 ];
 
 /** Players' colours, in the order they join. None is an AI colour. */

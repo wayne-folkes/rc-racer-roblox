@@ -1,7 +1,8 @@
-import { NEXT_LOBBY_SECONDS, type RaceStateMessage } from 'shared/protocol';
+import type { RaceStateMessage } from 'shared/protocol';
 import { formatTime } from 'shared/race';
 
-// The race on screen: lobby timer, 3-2-1, lap, position and time while racing, and the results.
+// The race on screen: what's being raced and where, the vote and lobby timers, 3-2-1, lap, position
+// and time while racing, and the results with the cup standings.
 
 const Players = game.GetService('Players');
 
@@ -33,14 +34,19 @@ export class Hud {
   private readonly banner: TextLabel;
   private readonly subtitle: TextLabel;
   private readonly info: TextLabel;
+  /** What's being raced, and on which track, along the top. */
+  private readonly heading: TextLabel;
   private readonly results: Frame;
   private readonly resultLines: TextLabel;
+  private readonly cupLines: TextLabel;
 
   constructor() {
     const gui = new Instance('ScreenGui');
     gui.Name = 'RaceHud';
     gui.ResetOnSpawn = false;
 
+    this.heading = label(gui, 18, new UDim2(0.5, 0, 0, 14), new Vector2(0.5, 0));
+    this.heading.Font = Enum.Font.GothamBold;
     this.banner = label(gui, 64, new UDim2(0.5, 0, 0.18, 0), new Vector2(0.5, 0.5));
     this.subtitle = label(gui, 20, new UDim2(0.5, 0, 0.18, 48), new Vector2(0.5, 0.5));
     this.info = label(gui, 22, new UDim2(1, -20, 0, 16), new Vector2(1, 0), Enum.TextXAlignment.Right);
@@ -51,6 +57,7 @@ export class Hud {
     this.results.AnchorPoint = new Vector2(0.5, 0.5);
     this.results.Position = new UDim2(0.5, 0, 0.55, 0);
     this.results.Size = new UDim2(0, 380, 0, 250);
+    this.results.AutomaticSize = Enum.AutomaticSize.X;
     this.results.BackgroundColor3 = new Color3(0.08, 0.09, 0.12);
     this.results.BackgroundTransparency = 0.2;
     this.results.Visible = false;
@@ -60,26 +67,41 @@ export class Hud {
     this.resultLines.TextYAlignment = Enum.TextYAlignment.Top;
     this.resultLines.Font = Enum.Font.GothamBold;
     this.resultLines.LineHeight = 1.25;
+    this.resultLines.Size = new UDim2(0, 330, 1, -40);
+    this.cupLines = label(this.results, 20, new UDim2(0, 380, 0, 20), new Vector2(0, 0), Enum.TextXAlignment.Left);
+    this.cupLines.Size = new UDim2(0, 300, 1, -40);
+    this.cupLines.TextYAlignment = Enum.TextYAlignment.Top;
+    this.cupLines.Font = Enum.Font.GothamBold;
+    this.cupLines.LineHeight = 1.25;
     this.results.Parent = gui;
 
     gui.Parent = Players.LocalPlayer.WaitForChild('PlayerGui');
   }
 
-  update(state: RaceStateMessage | undefined, myIndex: number, serverNow: number): void {
+  update(state: RaceStateMessage | undefined, myIndex: number, serverNow: number, trackName: string): void {
     let banner = '';
     let subtitle = '';
     let info = '';
     let showResults = false;
     const secondsLeft = state ? math.max(0, math.ceil(state.phaseEndsAt - serverNow)) : 0;
     const inRace = myIndex >= 0;
+    const others = state ? state.playerCount - 1 : 0;
+    const company =
+      others > 0 ? `${others} other player${others === 1 ? '' : 's'} here` : 'Invite friends to race';
 
-    if (state?.phase === 'lobby') {
-      banner = `Race starts in ${secondsLeft}`;
-      const others = state.playerCount - 1;
-      subtitle =
-        others > 0
-          ? `${others} other player${others === 1 ? '' : 's'} here · drive around while you wait`
-          : 'Invite friends to race · drive around while you wait';
+    this.heading.Text =
+      state === undefined || state.phase === 'waiting'
+        ? ''
+        : state.phase === 'vote'
+          ? state.modeLabel
+          : `${state.modeLabel} · ${trackName}`;
+
+    if (state?.phase === 'vote') {
+      banner = `Vote · ${secondsLeft}`;
+      subtitle = `${company} · drive around while you wait`;
+    } else if (state?.phase === 'lobby') {
+      banner = `Next race in ${secondsLeft}`;
+      subtitle = `${company} · drive around while you wait`;
     } else if (state?.phase === 'countdown') {
       banner = inRace ? `${secondsLeft}` : 'Race starting';
       subtitle = inRace ? '' : "You're in the next race";
@@ -104,9 +126,21 @@ export class Hud {
       }
       if (state.phase === 'results') {
         showResults = true;
-        banner = 'Results';
-        subtitle = `Next race in ${secondsLeft + NEXT_LOBBY_SECONDS}`;
-        this.resultLines.Text = state.standings
+        const cupWinner = state.cup[0];
+        banner = state.cupFinal && cupWinner ? `${cupWinner.name} wins the cup!` : 'Results';
+        subtitle = state.cupFinal ? 'Final standings' : `Next in ${secondsLeft}`;
+        this.cupLines.Visible = state.cup.size() > 0;
+        this.cupLines.Text =
+          'CUP\n' +
+          state.cup
+            .map((r, place) => {
+              const you = r.userId !== 0 && r.userId === Players.LocalPlayer.UserId ? '  ← you' : '';
+              return `${place + 1}. ${r.name}  ${r.points}${r.lastPoints > 0 ? ` (+${r.lastPoints})` : ''}${you}`;
+            })
+            .join('\n');
+        this.resultLines.Text =
+          'RACE\n' +
+          state.standings
           .map((i, place) => {
             const r = state.racers[i];
             const t = state.finishTimes[i];

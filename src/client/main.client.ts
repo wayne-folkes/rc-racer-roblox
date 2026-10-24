@@ -2,23 +2,26 @@ import { createCar, DEFAULT_TUNING, type CarState } from 'shared/carPhysics';
 import { collideCars, collideWithWalls } from 'shared/collision';
 import { gridPosition, PLAYER_COLORS } from 'shared/grid';
 import { NO_INPUT, stepWithEffects } from 'shared/handling';
-import { DEMO_LAYOUT, ItemSystem, type ItemEvent } from 'shared/items';
+import { ItemSystem, type ItemEvent } from 'shared/items';
 import { buildRamps, updateHeight } from 'shared/jumps';
 import { CAR_FIELDS, NET_FOLDER, REMOTE, SEND_RATE, type RaceStateMessage } from 'shared/protocol';
-import { gridStart, MEADOW_LOOP, ROAD_TOP, trackPath } from 'shared/tracks';
+import { gridStart, ROAD_TOP, trackById, TRACKS, trackPath, type TrackDef } from 'shared/tracks';
 import { buildTrack } from './buildTrack';
 import { CarModel, type CarPose } from './carModel';
 import { DriveInput } from './driveInput';
 import { FollowCamera } from './followCamera';
 import { Hud } from './hud';
 import { ItemViews } from './itemViews';
+import { MeteorShower } from './meteors';
 import { RemoteCars } from './remoteCars';
+import { VoteMenu } from './voteMenu';
+import { WeatherView } from './weather';
 
 // The player's side of a race. Our own car is driven here, at a fixed 120 Hz as in rc-racer's main.ts,
 // so it answers the controls instantly; the server is told where it is 20 times a second. So are the
 // things that only touch our car: boost pads, oil, puddles and ramps. The server decides everything
 // between cars (pickups, missiles, bombs, hits) and sends everyone else's cars (remoteCars.ts).
-// Between races the car can be driven anywhere.
+// Between races the car can be driven anywhere. Every device builds the track the server names.
 
 const Players = game.GetService('Players');
 const RunService = game.GetService('RunService');
@@ -41,11 +44,14 @@ const snapshotRemote = net.WaitForChild(REMOTE.snapshot) as UnreliableRemoteEven
 const raceStateRemote = net.WaitForChild(REMOTE.raceState) as RemoteEvent;
 const useItemRemote = net.WaitForChild(REMOTE.useItem) as RemoteEvent;
 const itemEventsRemote = net.WaitForChild(REMOTE.itemEvents) as RemoteEvent;
+const voteRemote = net.WaitForChild(REMOTE.vote) as RemoteEvent;
 const serverNow = () => game.Workspace.GetServerTimeNow();
 
-const track = trackPath(MEADOW_LOOP);
-buildTrack(track, MEADOW_LOOP);
-const ramps = buildRamps(track, DEMO_LAYOUT.ramps ?? []);
+/** The track this device has built: until the server names one, the first of the Classic Cup. */
+let def: TrackDef = TRACKS[0];
+let track = trackPath(def);
+let trackFolder = buildTrack(track, def);
+let ramps = buildRamps(track, def.layout.ramps ?? []);
 const start = gridStart(track);
 const car = createCar(start.x, start.z, start.heading);
 
@@ -54,7 +60,7 @@ const car = createCar(start.x, start.z, start.heading);
  * are left out, because the server hands out items. Built from the race's seed, so the hazards are
  * where the server has them.
  */
-const ownItems = (seed: number) => new ItemSystem(track, 1, { ...DEMO_LAYOUT, pickups: [] }, seed);
+const ownItems = (seed: number) => new ItemSystem(track, 1, { ...def.layout, pickups: [] }, seed);
 let items = ownItems(1);
 
 const poseOf = (c: CarState): CarPose => ({ x: c.x, y: c.y, z: c.z, heading: c.heading, steer: c.steer });
@@ -96,10 +102,43 @@ const camera = new FollowCamera(game.Workspace.CurrentCamera);
 const model = new CarModel(Color3.fromHex(PLAYER_COLORS[0]), 'MyCar');
 const input = new DriveInput();
 const hud = new Hud();
-const others = new RemoteCars(track);
-const itemViews = new ItemViews(track, ramps);
+const others = new RemoteCars();
+let itemViews = new ItemViews(track, def.layout, ramps);
 itemViews.setLayout(items);
+const voteMenu = new VoteMenu((pick) => voteRemote.FireServer(pick));
 camera.snapTo(car);
+
+/** The track's weather and, on the Space Cup, meteors: purely for looks, re-seeded every race. */
+const effectsFolder = new Instance('Folder');
+effectsFolder.Name = 'Effects';
+effectsFolder.Parent = game.Workspace;
+let weather: WeatherView | undefined;
+let meteors: MeteorShower | undefined;
+function startEffects(seed: number) {
+  weather?.destroy();
+  meteors?.destroy();
+  weather = def.theme.weather ? new WeatherView(def.theme.weather, effectsFolder, seed) : undefined;
+  meteors = def.theme.meteors ? new MeteorShower(track, def.theme.ground, seed, effectsFolder) : undefined;
+}
+startEffects(1);
+
+/** Tears down the track we're on and builds another, with the car at its start. */
+function switchTrack(to: TrackDef) {
+  if (to.id === def.id) return;
+  def = to;
+  track = trackPath(def);
+  trackFolder.Destroy();
+  trackFolder = buildTrack(track, def);
+  ramps = buildRamps(track, def.layout.ramps ?? []);
+  itemViews.destroy();
+  itemViews = new ItemViews(track, def.layout, ramps);
+  items = ownItems(1);
+  itemViews.setLayout(items);
+  const s = gridStart(track);
+  placeCar(createCar(s.x, s.z, s.heading));
+  camera.snapTo(car);
+  startEffects(1);
+}
 
 let state: RaceStateMessage | undefined;
 /** Our racer index in the current race, or -1 when we're not in it. */
@@ -111,6 +150,8 @@ const inRace = () =>
   (state.phase === 'countdown' || state.phase === 'racing' || state.phase === 'results');
 
 raceStateRemote.OnClientEvent.Connect((message: RaceStateMessage) => {
+  const named = trackById(message.trackId);
+  if (named) switchTrack(named);
   const newRace = state === undefined || message.raceId !== state.raceId;
   state = message;
   myIndex = -1;
@@ -121,9 +162,10 @@ raceStateRemote.OnClientEvent.Connect((message: RaceStateMessage) => {
   if (message.racers.size() === 0) {
     others.clear();
   } else if (newRace) {
-    others.setRacers(message.racers, myIndex);
+    others.setRacers(message.racers, myIndex, track);
     items = ownItems(message.seed);
     itemViews.setLayout(items);
+    startEffects(message.raceId);
     if (myIndex >= 0) {
       placeCar(gridPosition(track, message.racers[myIndex].gridSlot));
       model.setColor(Color3.fromHex(message.racers[myIndex].color));
@@ -188,6 +230,10 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
 
   // Watching a race we're not in: follow the leader.
   const leader = !racing && state && state.standings.size() > 0 ? others.shownCar(state.standings[0]) : undefined;
-  camera.update(leader ?? car, frameDt);
-  hud.update(state, myIndex, now);
+  const focus = leader ?? car;
+  camera.update(focus, frameDt);
+  weather?.update(frameDt, focus.x, focus.z);
+  meteors?.update(frameDt, focus.x, focus.z);
+  hud.update(state, myIndex, now, def.name);
+  voteMenu.update(state);
 });

@@ -1,10 +1,11 @@
 import type { TrackPath } from 'shared/trackPath';
 import { ROAD_TOP, type TrackDef } from 'shared/tracks';
+import { buildScenery } from './scenery';
 
-// Builds Meadow Loop out of Parts from its centreline: a ground plane, the road, striped kerbs, low
-// walls and a start line. rc-racer's trackScene.ts builds the same strips as triangle ribbons; here
-// each centreline segment gets one box per strip, a little longer than the segment so curves don't
-// show gaps.
+// Builds a track out of Parts from its centreline: a ground plane, the road, striped kerbs, low
+// walls, a start line and the theme's scenery (scenery.ts). rc-racer's trackScene.ts builds the
+// same strips as triangle ribbons; here each centreline segment gets one box per strip, a little
+// longer than the segment so curves don't show gaps.
 //
 // Each player builds their own copy from the shared centreline. A track built on the server has to
 // replicate to the player Part by Part, and the race would start with half of it missing.
@@ -115,6 +116,11 @@ export function buildTrack(track: TrackPath, def: TrackDef): Folder {
     CURB_WHITE,
     folder,
   ).Name = 'StartLine';
+
+  const scenery = new Instance('Folder');
+  scenery.Name = 'Scenery';
+  buildScenery(track, def.theme, scenery);
+  scenery.Parent = folder;
 
   folder.Parent = game.Workspace;
   return folder;

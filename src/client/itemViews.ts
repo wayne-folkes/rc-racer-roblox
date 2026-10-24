@@ -1,4 +1,4 @@
-import { DEMO_LAYOUT, ItemSystem, seededRandom, type ItemEvent } from 'shared/items';
+import { ItemSystem, seededRandom, type ItemEvent, type TrackLayout } from 'shared/items';
 import { RAMP_HEIGHT, RAMP_LENGTH, type Ramp } from 'shared/jumps';
 import { MISSILE_FIELDS } from 'shared/protocol';
 import type { TrackPath } from 'shared/trackPath';
@@ -85,14 +85,15 @@ export class ItemViews {
   private clock = 0;
 
   constructor(
-    private readonly track: TrackPath,
+    track: TrackPath,
+    layout: TrackLayout,
     ramps: Ramp[],
   ) {
     this.folder.Name = 'Items';
     this.folder.Parent = game.Workspace;
     for (const ramp of ramps) this.buildRamp(ramp);
     // Item boxes are the same every race. A full ItemSystem numbers them the way the server's does.
-    for (const p of new ItemSystem(track, 1, DEMO_LAYOUT, 1).pickups) {
+    for (const p of new ItemSystem(track, 1, layout, 1).pickups) {
       const missile = p.kind === 'missile';
       const ring = ringModel(this.folder, RING_COLOR[p.kind]);
       ring.place(new CFrame(p.x, ROAD_TOP + RING_LIFT, p.z));
@@ -218,6 +219,11 @@ export class ItemViews {
       m.model.destroy();
       this.missiles.delete(id);
     }
+  }
+
+  /** Removes everything, for a change of track. */
+  destroy(): void {
+    this.folder.Destroy();
   }
 
   /** Explosions where missiles and bombs go off. */
