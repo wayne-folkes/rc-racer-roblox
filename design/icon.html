@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>RC Racer Roblox icon</title>
+    <!-- Source for design/icon.png (512x512), the Roblox experience icon. The same art as thumbnail.html, stacked
+         to fit a square: the name over a red car leading a blue one. Roblox rounds the corners, so nothing that
+         matters sits in them. Regenerate with design/render.sh. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 512px;
+        height: 512px;
+        overflow: hidden;
+        background: #0f172a;
+      }
+
+      .card {
+        position: relative;
+        width: 512px;
+        height: 512px;
+        overflow: hidden;
+        background: radial-gradient(ellipse 85% 70% at 50% 30%, #1e293b 0%, #0f172a 75%);
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 512px;
+        height: 512px;
+      }
+
+      .logo {
+        position: absolute;
+        left: 0;
+        right: 0;
+        margin: 0;
+        text-align: center;
+        font-family: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Arial Black", sans-serif;
+        font-weight: 900;
+        line-height: 1;
+        color: #facc15;
+        white-space: nowrap;
+        transform: skewX(-8deg);
+      }
+
+      .rc {
+        top: 46px;
+        font-size: 164px;
+        letter-spacing: 0.04em;
+        text-shadow: 7px 8px 0 #020617;
+      }
+
+      .racer {
+        top: 196px;
+        font-size: 92px;
+        letter-spacing: 0.03em;
+        text-shadow: 5px 6px 0 #020617;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <svg class="scene" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0" stop-color="#facc15" stop-opacity="0.24" />
+            <stop offset="1" stop-color="#facc15" stop-opacity="0" />
+          </radialGradient>
+          <linearGradient id="grass" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#6fbf5a" />
+            <stop offset="1" stop-color="#3f7a33" />
+          </linearGradient>
+          <pattern id="checks" width="24" height="24" patternUnits="userSpaceOnUse">
+            <rect width="24" height="24" fill="#0f172a" />
+            <rect width="12" height="12" fill="#f8fafc" />
+            <rect x="12" y="12" width="12" height="12" fill="#f8fafc" />
+          </pattern>
+          <g id="car">
+            <ellipse cx="2" cy="4" rx="45" ry="25" fill="#020617" opacity="0.35" />
+            <g fill="#0b1120">
+              <rect x="-29" y="-27" width="20" height="10" rx="3" />
+              <rect x="-29" y="17" width="20" height="10" rx="3" />
+              <rect x="21" y="-27" width="20" height="10" rx="3" />
+              <rect x="21" y="17" width="20" height="10" rx="3" />
+            </g>
+            <path d="M-40 -14 L28 -15 L42 -5 L42 5 L28 15 L-40 14 Z" fill="currentColor" />
+            <path d="M-36 -11 L26 -11 L37 -3 L37 3 L26 11 L-36 11 Z" fill="#ffffff" opacity="0.22" />
+            <rect x="-36" y="-1.5" width="62" height="3" fill="#ffffff" opacity="0.6" />
+            <path d="M-12 -9 L10 -9 L19 -3 L19 3 L10 9 L-12 9 Z" fill="#0f172a" opacity="0.82" />
+            <path d="M-12 -9 L10 -9 L4 -4 L-12 -4 Z" fill="#ffffff" opacity="0.3" />
+            <rect x="-44" y="-16" width="7" height="32" rx="2" fill="#0b1120" />
+            <circle cx="41" cy="-9" r="2.2" fill="#fef9c3" />
+            <circle cx="41" cy="9" r="2.2" fill="#fef9c3" />
+          </g>
+        </defs>
+
+        <ellipse cx="256" cy="170" rx="240" ry="150" fill="url(#glow)" />
+        <path d="M-20 350 Q260 318 540 322 L540 540 L-20 540 Z" fill="url(#grass)" />
+
+        <path d="M-40 500 Q200 430 560 360" fill="none" stroke="#d92626" stroke-width="128" />
+        <path d="M-40 500 Q200 430 560 360" fill="none" stroke="#f8fafc" stroke-width="128" stroke-dasharray="20 20" />
+        <path d="M-40 500 Q200 430 560 360" fill="none" stroke="#4a4f5a" stroke-width="94" />
+        <path d="M-40 500 Q200 430 560 360" fill="none" stroke="#f8fafc" stroke-width="4" stroke-dasharray="20 18" opacity="0.85" />
+
+        <use href="#car" style="color: #3b82f6" transform="translate(150 458) rotate(-14) scale(1.45)" />
+        <use href="#car" style="color: #e63946" transform="translate(338 410) rotate(-12) scale(1.75)" />
+
+        <rect x="0" y="0" width="512" height="22" fill="url(#checks)" />
+      </svg>
+
+      <h1 class="logo rc">RC</h1>
+      <h1 class="logo racer">RACER</h1>
+    </div>
+  </body>
+</html>

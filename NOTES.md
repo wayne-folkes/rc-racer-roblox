@@ -26,6 +26,13 @@ more players): Studio opens a server window and one window per player.
 Controls: WASD or arrows to drive, Space to drift, R to reset; on a gamepad RT/A for gas, LT/X to
 brake, the stick or d-pad to steer, a bumper to drift, Y to reset; on touch, on-screen buttons.
 
+## Icon and thumbnail
+
+`design/icon.png` (512×512) and `design/thumbnail.png` (1920×1080) are the experience's icon and
+thumbnail, drawn from rc-racer's link-preview art without its website link, since Roblox doesn't
+allow links off the platform. Edit `design/icon.html` or `design/thumbnail.html` and run
+`design/render.sh` (headless Chrome) to redraw them, then upload them in the Creator Dashboard.
+
 ## Status
 
 | Check | Result |
