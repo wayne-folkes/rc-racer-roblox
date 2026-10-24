@@ -1,0 +1,23 @@
+# mise config for rc-racer-roblox — https://mise.jdx.dev
+#
+# `mise install` provisions Rojo. Node comes from Homebrew; roblox-ts is an npm devDependency.
+
+[tools]
+# Syncs out/ into Roblox Studio (`rojo serve`) or builds a place file (`rojo build`).
+"github:rojo-rbx/rojo" = "7.7.1"
+
+[tasks.install]
+description = "Install npm dependencies (roblox-ts and the Roblox types)"
+run = "npm ci"
+
+[tasks.build]
+description = "Compile src/ to Luau in out/ with roblox-ts"
+run = "npm run build"
+
+[tasks.place]
+description = "Compile and build spike.rbxlx, a place file to open in Roblox Studio"
+run = "npm run place"
+
+[tasks.serve]
+description = "Live-sync into an open Studio place (needs the Rojo Studio plugin)"
+run = "npm run serve"
