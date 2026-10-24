@@ -30,7 +30,7 @@ brake, the stick or d-pad to steer, a bumper to drift, Y to reset; on touch, on-
 | Ported logic matches the web game | ✅ checked in Node against rc-racer's own modules: the 480 Meadow Loop centreline points agree to within 1e-13, and a scripted 30-second drive with 781 wall hits ends in the same place to within 1e-6 |
 | Ported race and AI match the web game | ✅ in Node: the racing line agrees to within 1e-12, and four AI cars racing for 60 seconds end within 3e-13 of the web game's AI, with the same standings |
 | Multiplayer race sim | ✅ in Node: full races with simulated players' devices reporting at 20 Hz finish, standings follow finish times, players fill the back of the grid in join order, and a player who leaves is driven home by an AI |
-| Multiplayer in Studio | ⏳ not yet checked |
+| Multiplayer in Studio | ✅ (2026-10-23) a 2-player test races the AI and bumps feel right, after drawing other cars where they really are rather than easing behind them |
 | Opens in Studio and drives round Meadow Loop | ✅ (2026-10-23) the track builds with no gaps on the bends, the car drives round it, and the camera matches the web game's view |
 
 Controls feel good with keyboard, gamepad and touch (Studio's device emulator, one finger at a time),

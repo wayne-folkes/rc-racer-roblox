@@ -11,7 +11,7 @@ import { CarModel, type CarPose } from './carModel';
 
 /** Don't carry a car on by its velocity for longer than this without a report. */
 const MAX_EXTRAPOLATE = 0.25;
-/** How fast (1/s) a drawn car closes the gap to where it should be. */
+/** How fast (1/s) a drawn car closes any gap to where it should be, after moving at its own speed. */
 const SMOOTHING = 14;
 /** A car further than this from where it should be was put somewhere: drawn there, not slid there. */
 const SNAP_DISTANCE = 4;
@@ -84,6 +84,11 @@ export class RemoteCars {
         now.vz = vz;
       }
       const { shown, now } = remote;
+      // Carry the drawn car along at its own speed, then ease out only what's left over. Easing the
+      // whole move would leave a moving car drawn behind where it is (v / SMOOTHING, nearly a car
+      // length at top speed), and cars would overlap on screen without touching.
+      shown.x += now.vx * dt;
+      shown.z += now.vz * dt;
       if (math.sqrt((now.x - shown.x) ** 2 + (now.z - shown.z) ** 2) > SNAP_DISTANCE) {
         shown.x = now.x;
         shown.z = now.z;
