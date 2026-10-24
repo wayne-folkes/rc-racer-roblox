@@ -10,7 +10,12 @@ with Rojo.
 mise install    # Rojo 7.7.1, pinned in mise.toml
 npm ci          # roblox-ts 3.0.0 and the Roblox types, pinned in package.json
 npm run place   # compiles src/ to out/ and builds spike.rbxlx
+npm test        # checks the ported game code against rc-racer's own, in Node
 ```
+
+`npm test` needs rc-racer checked out beside this folder (`../rc-racer`) with its client's
+dependencies installed, because it imports the web game's modules to compare against.
+`test/setup.ts` gives Node the bits of Luau and roblox-ts the shared code expects.
 
 Open `spike.rbxlx` in Roblox Studio and press Play. To edit code live instead, run `npm run watch`
 and `npm run serve`, then connect from the Rojo plugin in Studio.

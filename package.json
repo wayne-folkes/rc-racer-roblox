@@ -7,12 +7,14 @@
     "build": "rbxtsc",
     "watch": "rbxtsc -w",
     "place": "rbxtsc && rojo build -o spike.rbxlx",
-    "serve": "rojo serve"
+    "serve": "rojo serve",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@rbxts/compiler-types": "3.0.0-types.0",
     "@rbxts/types": "1.0.949",
     "roblox-ts": "3.0.0",
-    "typescript": "5.5.3"
+    "typescript": "5.5.3",
+    "vitest": "5.0.5"
   }
 }
