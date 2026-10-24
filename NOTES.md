@@ -60,7 +60,7 @@ touch (Studio's device emulator).
 
 | Part | Web | Spike |
 |---|---|---|
-| Track | Triangle ribbons (`trackScene.ts`) | One box Part per centreline segment per strip, slightly overlapped so bends have no gaps: road, two striped kerbs, two walls (5 × 480 = 2,400 Parts) plus ground and start line, built by the server at startup (`server/buildTrack.ts`). EditableMesh would give fewer, truer pieces, and is worth trying if Parts look or perform badly. |
+| Track | Triangle ribbons (`trackScene.ts`) | One box Part per centreline segment per strip, slightly overlapped so bends have no gaps: road, two striped kerbs, two walls (5 × 480 = 2,400 Parts) plus ground and start line, built by the server at startup (`server/buildTrack.ts`). Overlapping boxes of different colours at the same height flicker (z-fighting), so red kerb stripes sit 0.05 studs above the white ones. EditableMesh would give fewer, truer pieces, and is worth trying if Parts look or perform badly. |
 | Car | Three.js boxes and cylinders | The buggy's 7 boxes and 4 wheels as anchored Parts, moved each frame with `BulkMoveTo`; front wheels steer (`client/carModel.ts`). |
 | Camera | Orthographic 3/4 view | Scriptable camera 300 studs away with a narrow lens (about 7° vertically), giving the same 36-unit view; same follow and look-ahead (`client/followCamera.ts`). |
 | Input | Keyboard, Gamepad API and touch code | ContextActionService for keys and gamepad (same layout as the web), plus five on-screen touch buttons (`client/driveInput.ts`). |
