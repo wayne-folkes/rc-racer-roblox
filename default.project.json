@@ -3,12 +3,6 @@
   "globIgnorePaths": ["**/package.json", "**/tsconfig.json"],
   "tree": {
     "$className": "DataModel",
-    "ServerScriptService": {
-      "$className": "ServerScriptService",
-      "TS": {
-        "$path": "out/server"
-      }
-    },
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "rbxts_include": {
@@ -51,6 +45,12 @@
     },
     "Workspace": {
       "$className": "Workspace"
+    },
+    "TextChatService": {
+      "$className": "TextChatService",
+      "$properties": {
+        "ChatVersion": "TextChatService"
+      }
     }
   }
 }

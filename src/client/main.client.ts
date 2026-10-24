@@ -1,6 +1,7 @@
 import { createCar, stepCar, type CarState } from 'shared/carPhysics';
 import { collideWithWalls } from 'shared/collision';
 import { gridStart, MEADOW_LOOP, ROAD_TOP, trackPath } from 'shared/tracks';
+import { buildTrack } from './buildTrack';
 import { CarModel, type CarPose } from './carModel';
 import { DriveInput } from './driveInput';
 import { FollowCamera } from './followCamera';
@@ -11,8 +12,9 @@ import { FollowCamera } from './followCamera';
 const RunService = game.GetService('RunService');
 const StarterGui = game.GetService('StarterGui');
 
-// A one-player race has no use for the player list in the corner.
+// A one-player race has no use for the player list or chat.
 StarterGui.SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false);
+StarterGui.SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false);
 
 const STEP = 1 / 120;
 /** A frame longer than this (a hitch, a paused debugger) doesn't fast-forward the car. */
@@ -21,6 +23,7 @@ const MAX_FRAME = 0.1;
 const SNAP_DISTANCE = 2;
 
 const track = trackPath(MEADOW_LOOP);
+buildTrack(track, MEADOW_LOOP);
 const start = gridStart(track);
 const car = createCar(start.x, start.z, start.heading);
 

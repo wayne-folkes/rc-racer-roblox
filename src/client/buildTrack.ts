@@ -5,6 +5,9 @@ import { ROAD_TOP, type TrackDef } from 'shared/tracks';
 // walls and a start line. rc-racer's trackScene.ts builds the same strips as triangle ribbons; here
 // each centreline segment gets one box per strip, a little longer than the segment so curves don't
 // show gaps.
+//
+// Each player builds their own copy from the shared centreline. A track built on the server has to
+// replicate to the player Part by Part, and the race would start with half of it missing.
 
 const WALL_HEIGHT = 0.7;
 const WALL_THICKNESS = 0.6;

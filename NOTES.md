@@ -27,8 +27,9 @@ brake, the stick or d-pad to steer, a bumper to drift, Y to reset; on touch, on-
 | Ported logic matches the web game | ✅ checked in Node against rc-racer's own modules: the 480 Meadow Loop centreline points agree to within 1e-13, and a scripted 30-second drive with 781 wall hits ends in the same place to within 1e-6 |
 | Opens in Studio and drives round Meadow Loop | ✅ (2026-10-23) the track builds with no gaps on the bends, the car drives round it, and the camera matches the web game's view |
 
-Still to check in Studio: how the handling feels next to the web game, frame rate, and gamepad and
-touch (Studio's device emulator).
+Controls feel good with keyboard, gamepad and touch (Studio's device emulator, one finger at a time),
+and the view works on phone and console screens. Still to check: frame rate (Shift+F5 in Studio),
+and touch driving on a real phone, which needs the place published privately.
 
 ## What carried over
 
@@ -60,7 +61,7 @@ touch (Studio's device emulator).
 
 | Part | Web | Spike |
 |---|---|---|
-| Track | Triangle ribbons (`trackScene.ts`) | One box Part per centreline segment per strip, slightly overlapped so bends have no gaps: road, two striped kerbs, two walls (5 × 480 = 2,400 Parts) plus ground and start line, built by the server at startup (`server/buildTrack.ts`). Overlapping boxes of different colours at the same height flicker (z-fighting), so red kerb stripes sit 0.05 studs above the white ones. EditableMesh would give fewer, truer pieces, and is worth trying if Parts look or perform badly. |
+| Track | Triangle ribbons (`trackScene.ts`) | One box Part per centreline segment per strip, slightly overlapped so bends have no gaps: road, two striped kerbs, two walls (5 × 480 = 2,400 Parts) plus ground and start line, built by each player's client at startup (`client/buildTrack.ts`). Built on the server, it reached the player Part by Part and the race started with half the track missing; building it locally from the shared centreline is instant and sends nothing over the network. Overlapping boxes of different colours at the same height flicker (z-fighting), so red kerb stripes sit 0.05 studs above the white ones. EditableMesh would give fewer, truer pieces, and is worth trying if Parts look or perform badly. |
 | Car | Three.js boxes and cylinders | The buggy's 7 boxes and 4 wheels as anchored Parts, moved each frame with `BulkMoveTo`; front wheels steer (`client/carModel.ts`). |
 | Camera | Orthographic 3/4 view | Scriptable camera 300 studs away with a narrow lens (about 7° vertically), giving the same 36-unit view; same follow and look-ahead (`client/followCamera.ts`). |
 | Input | Keyboard, Gamepad API and touch code | ContextActionService for keys and gamepad (same layout as the web), plus five on-screen touch buttons (`client/driveInput.ts`). |
@@ -70,8 +71,9 @@ Scale is 1 game unit = 1 stud. That's fine with no avatars on screen, but a car 
 avatar's height, so multiplayer lobbies with characters may want everything scaled up (one constant
 at the render boundary; physics stays in game units).
 
-The server sets `CharacterAutoLoads = false` (in `default.project.json`), so no avatar spawns, and
-only builds the track. All driving happens on the player's device.
+`CharacterAutoLoads = false` (in `default.project.json`) stops an avatar spawning. There are no
+server scripts yet: the client builds the track and does all the driving. Chat uses
+TextChatService, but it and the player list are hidden while it's one player.
 
 ## The plan's mapping, revisited
 
