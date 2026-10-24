@@ -67,13 +67,14 @@ export class RemoteCars {
     for (const [i, remote] of this.cars) {
       const base = i * CAR_FIELDS;
       if (this.latest.size() >= base + CAR_FIELDS) {
-        const [x, z, heading, steer, vx, vz] = [
+        const [x, z, heading, steer, vx, vz, y] = [
           this.latest[base],
           this.latest[base + 1],
           this.latest[base + 2],
           this.latest[base + 3],
           this.latest[base + 4],
           this.latest[base + 5],
+          this.latest[base + 6],
         ];
         const now = remote.now;
         now.x = x + vx * age;
@@ -82,6 +83,7 @@ export class RemoteCars {
         now.steer = steer;
         now.vx = vx;
         now.vz = vz;
+        now.y = y;
       }
       const { shown, now } = remote;
       // Carry the drawn car along at its own speed, then ease out only what's left over. Easing the
@@ -99,7 +101,9 @@ export class RemoteCars {
         shown.heading += angleDiff(now.heading, shown.heading) * k;
       }
       shown.steer += (now.steer - shown.steer) * k;
-      const pose: CarPose = { x: shown.x, y: roadTop, z: shown.z, heading: shown.heading, steer: shown.steer };
+      // Height isn't carried on: a jump is short, and the ease keeps it smooth.
+      shown.y += (now.y - shown.y) * k;
+      const pose: CarPose = { x: shown.x, y: roadTop + shown.y, z: shown.z, heading: shown.heading, steer: shown.steer };
       remote.model.place(pose);
       result.set(i, now);
     }

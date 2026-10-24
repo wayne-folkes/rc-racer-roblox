@@ -7,6 +7,8 @@ import type { CarState } from 'shared/carPhysics';
 const VIEW_HEIGHT = 36;
 /** Direction from the target to the camera, as on the web. */
 const OFFSET_DIR = new Vector3(-0.55, 1.1, 1).Unit;
+/** Y rotation that turns an object's +Z face towards the camera. */
+export const FACE_CAMERA_YAW = math.atan2(OFFSET_DIR.X, OFFSET_DIR.Z);
 /** How far away the camera sits. Further means flatter, more like the web's orthographic view. */
 const DISTANCE = 300;
 /** Seconds of velocity to look ahead, so you see more of the road you're heading into. */

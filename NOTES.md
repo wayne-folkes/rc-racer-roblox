@@ -35,6 +35,9 @@ brake, the stick or d-pad to steer, a bumper to drift, Y to reset; on touch, on-
 | Ported logic matches the web game | ✅ checked in Node against rc-racer's own modules: the 480 Meadow Loop centreline points agree to within 1e-13, and a scripted 30-second drive with 781 wall hits ends in the same place to within 1e-6 |
 | Ported race and AI match the web game | ✅ in Node: the racing line agrees to within 1e-12, and four AI cars racing for 60 seconds end within 3e-13 of the web game's AI, with the same standings |
 | Multiplayer race sim | ✅ in Node: full races with simulated players' devices reporting at 20 Hz finish, standings follow finish times, players fill the back of the grid in join order, and a player who leaves is driven home by an AI |
+| Ported items and ramps match the web game | ✅ in Node: the hazard dice give exactly the web game's numbers, item boxes, boost pads and ramps land within 2e-13, and a 60-second AI race with items ends within 3e-13 with the same pickups, missiles, bombs, hits and jumps |
+| Items in a multiplayer race | ✅ in Node: in a 2-player race, AI and players pick up items, fire missiles and drop bombs, and hits land on AI and players alike (15 pickups, 6 missiles, 9 bombs, 11 hits, 5 on players) |
+| Items in Studio | ⏳ not yet checked |
 | Multiplayer in Studio | ✅ (2026-10-23) a 2-player test races the AI and bumps feel right, after drawing other cars where they really are rather than easing behind them |
 | Opens in Studio and drives round Meadow Loop | ✅ (2026-10-23) the track builds with no gaps on the bends, the car drives round it, and the camera matches the web game's view |
 
@@ -75,6 +78,8 @@ and touch driving on a real phone, which needs the place published privately.
   not a number. It's a type error, so it's caught, but the Node test shim has to translate it.
 - **`next` and `error` are reserved** (Luau globals), so they can't be variable names.
 - **One compile error stops all output**, not just that file's.
+- **No `Math.imul`.** `jsMath.ts` builds it from 16-bit halves so it's exact in Luau; bitwise
+  operators compile to Luau's `bit32` library.
 
 ## What had to be rewritten
 
@@ -117,6 +122,19 @@ Friends in the same server race each other, with AI cars filling the grid.
   normal for Roblox racers.
 - **Rubber-banding:** AI cars pace themselves against whichever player is furthest ahead.
 - **Leaving:** a player who quits mid-race has their car driven home by an AI.
+- **Items** (`shared/items.ts`, `shared/jumps.ts`, ported from the web game): each piece is
+  decided by whoever owns what it touches.
+  - *The server* decides everything between cars: who takes an item box, what each racer holds,
+    where missiles fly and bombs sit, and who gets hit. A hit on a player goes to that player's
+    device, which spins out its own car. AI cars get everything on the server, including the web
+    game's tactics for firing and bombing.
+  - *Each device* handles what only touches its own car: boost pads, oil, puddles and ramps, so they
+    react instantly like the handling does (`shared/handling.ts` applies them for both the AI and
+    players' cars). Hazards are rolled at random each race; the server sends the seed and every
+    device rolls the same layout.
+  - Fire is X or Shift, B on a gamepad, or the ITEM button on touch. Missiles fly in the snapshots;
+    held items, bombs and which boxes are respawning are in the race state, which is also sent the
+    moment an item event happens.
 - **Cheating:** the server ignores a report that moves a car faster than 1.6× top speed (plus room
   for a reset). That stops teleporting; a modified client could still drive a little too fast, and
   tighter checks (lap times, staying on the track) are for later.
@@ -137,9 +155,12 @@ Friends in the same server race each other, with AI cars filling the grid.
 ## What's left
 
 1. ~~**AI racers and the race**~~: done, with multiplayer (above).
-2. **Items, boost pads, hazards, ramps**: port `items` and `jumps`, run them on the server (it
-   decides who a missile hits, allowing for lag), rebuild `itemScene`/`rampScene` in Parts with
-   ParticleEmitters: **4–6 days.**
+2. ~~**Items, boost pads, hazards, ramps**~~: done (above). Still plain next to the web game:
+   cars don't tilt on ramps, there's no boost flame or dust, and explosions are Roblox's stock
+   effect. Item boxes, missiles and bombs follow the web's models (`client/itemModels.ts`), with a
+   rounded missile nose because Roblox has no cone Part; boost pads are the web's chasing
+   chevron arrows, each a ">" of two bars; oil and puddles are the web's seeded blobs, each a fan
+   of triangles built from pairs of WedgeParts (Roblox has no polygon Part).
 3. **Season, garage, other tracks and themes, scenery**: logic ports; the 8 tracks' scenery and
    weather need rebuilding; a vote or rotation for the next track: **4–6 days.**
 4. **Menus** in ScreenGui (title, garage, settings): **3–4 days.**

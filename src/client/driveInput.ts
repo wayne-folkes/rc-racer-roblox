@@ -17,6 +17,7 @@ const KEYS: Record<Control, Enum.KeyCode[]> = {
   handbrake: [Enum.KeyCode.Space, Enum.KeyCode.ButtonL1, Enum.KeyCode.ButtonR1],
 };
 const RESET_KEYS = [Enum.KeyCode.R, Enum.KeyCode.ButtonY];
+const FIRE_KEYS = [Enum.KeyCode.X, Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift, Enum.KeyCode.ButtonB];
 const STICK_DEADZONE = 0.18;
 
 const deadzone = (v: number) => {
@@ -32,6 +33,7 @@ export class DriveInput {
   private rightTrigger = 0;
   private leftTrigger = 0;
   private resetPressed = false;
+  private firePressed = false;
 
   constructor() {
     for (const [control, keys] of pairs(KEYS)) {
@@ -74,6 +76,16 @@ export class DriveInput {
       ...RESET_KEYS,
     );
 
+    ContextActionService.BindAction(
+      'drive_fire',
+      (_, state) => {
+        if (state === Enum.UserInputState.Begin) this.firePressed = true;
+        return Enum.ContextActionResult.Sink;
+      },
+      false,
+      ...FIRE_KEYS,
+    );
+
     this.buildHud();
   }
 
@@ -107,6 +119,13 @@ export class DriveInput {
     return pressed;
   }
 
+  /** True once per press of the fire key or button: use the held item. */
+  consumeFire(): boolean {
+    const pressed = this.firePressed;
+    this.firePressed = false;
+    return pressed;
+  }
+
   private buildHud() {
     const gui = new Instance('ScreenGui');
     gui.Name = 'DriveHud';
@@ -119,6 +138,7 @@ export class DriveInput {
       this.touchButton(gui, 'gas', 'GAS', new UDim2(1, -114, 1, -120));
       this.touchButton(gui, 'brake', 'BRAKE', new UDim2(1, -214, 1, -120));
       this.touchButton(gui, 'handbrake', 'DRIFT', new UDim2(1, -114, 1, -220));
+      this.tapButton(gui, 'ITEM', new UDim2(1, -214, 1, -220), () => (this.firePressed = true));
     } else {
       // Bottom centre: Roblox's own buttons take the top-left corner.
       const hint = new Instance('TextLabel');
@@ -130,14 +150,32 @@ export class DriveInput {
       hint.TextSize = 16;
       hint.TextColor3 = new Color3(1, 1, 1);
       hint.TextStrokeTransparency = 0.5;
-      hint.Text = 'WASD / arrows to drive · Space to drift · R to reset';
+      hint.Text = 'WASD / arrows to drive · Space to drift · X to use item · R to reset';
       hint.Parent = gui;
     }
 
     gui.Parent = Players.LocalPlayer.WaitForChild('PlayerGui');
   }
 
+  /** An on-screen button that does something once per tap. */
+  private tapButton(gui: ScreenGui, label: string, position: UDim2, onTap: () => void) {
+    const button = this.roundButton(gui, label, position);
+    button.InputBegan.Connect((input) => {
+      if (input.UserInputType === Enum.UserInputType.Touch) onTap();
+    });
+  }
+
   private touchButton(gui: ScreenGui, control: Control, label: string, position: UDim2) {
+    const button = this.roundButton(gui, label, position);
+    button.InputBegan.Connect((input) => {
+      if (input.UserInputType === Enum.UserInputType.Touch) this.press(control, 'touch');
+    });
+    button.InputEnded.Connect((input) => {
+      if (input.UserInputType === Enum.UserInputType.Touch) this.release(control, 'touch');
+    });
+  }
+
+  private roundButton(gui: ScreenGui, label: string, position: UDim2): TextButton {
     const button = new Instance('TextButton');
     button.Position = position;
     button.Size = new UDim2(0, 90, 0, 90);
@@ -149,13 +187,7 @@ export class DriveInput {
     button.Text = label;
     button.AutoButtonColor = false;
     new Instance('UICorner', button).CornerRadius = new UDim(0.5, 0);
-
-    button.InputBegan.Connect((input) => {
-      if (input.UserInputType === Enum.UserInputType.Touch) this.press(control, 'touch');
-    });
-    button.InputEnded.Connect((input) => {
-      if (input.UserInputType === Enum.UserInputType.Touch) this.release(control, 'touch');
-    });
     button.Parent = gui;
+    return button;
   }
 }

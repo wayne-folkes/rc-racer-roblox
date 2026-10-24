@@ -2,7 +2,14 @@ import { DEFAULT_TUNING } from 'shared/carPhysics';
 import { GRID_SIZE } from 'shared/grid';
 import { COUNTDOWN_SECONDS, TOTAL_LAPS } from 'shared/race';
 import { RaceSim, type Entrant } from 'shared/raceSim';
-import { CAR_FIELDS, NET_FOLDER, NEXT_LOBBY_SECONDS, REMOTE, SEND_RATE, type Phase, type RaceStateMessage } from 'shared/protocol';
+import {
+  NET_FOLDER,
+  NEXT_LOBBY_SECONDS,
+  REMOTE,
+  SEND_RATE,
+  type Phase,
+  type RaceStateMessage,
+} from 'shared/protocol';
 import { MEADOW_LOOP, trackPath } from 'shared/tracks';
 
 // Runs the races: a lobby timer, then a race on the grid with AI filling the slots players don't
@@ -27,6 +34,10 @@ const STATE_INTERVAL = 0.25;
 const MAX_REPORTED_SPEED = DEFAULT_TUNING.maxSpeed * 1.6;
 /** A reset moves a car back onto the centreline: at most about half the road's width. */
 const RESET_ALLOWANCE = 4;
+/** Highest a reported car can be: a fast car off a ramp peaks a little under 2 studs up. */
+const MAX_REPORTED_HEIGHT = 4;
+/** Missiles sent per snapshot, to stay well under the 900-byte limit on unreliable messages. */
+const MAX_SNAPSHOT_MISSILES = 8;
 
 const net = new Instance('Folder');
 net.Name = NET_FOLDER;
@@ -39,6 +50,12 @@ snapshotRemote.Parent = net;
 const raceStateRemote = new Instance('RemoteEvent');
 raceStateRemote.Name = REMOTE.raceState;
 raceStateRemote.Parent = net;
+const useItemRemote = new Instance('RemoteEvent');
+useItemRemote.Name = REMOTE.useItem;
+useItemRemote.Parent = net;
+const itemEventsRemote = new Instance('RemoteEvent');
+itemEventsRemote.Name = REMOTE.itemEvents;
+itemEventsRemote.Parent = net;
 net.Parent = ReplicatedStorage;
 
 const track = trackPath(MEADOW_LOOP);
@@ -68,7 +85,17 @@ function stateMessage(): RaceStateMessage {
     standings: sim ? sim.race.standings() : [],
     finishTimes: sim ? [...sim.race.finishTimes] : [],
     playerCount: joined.size(),
+    seed: sim ? sim.seed : 0,
+    items: sim ? sim.items.status.map((s) => s.item ?? '') : [],
+    bombs: bombList(),
+    pickupsDown: sim ? sim.items.pickups.filter((p) => p.respawn > 0).map((p) => p.id) : [],
   };
+}
+
+function bombList(): number[] {
+  const list: number[] = [];
+  if (sim) for (const b of sim.items.bombs) list.push(b.id, b.x, b.z);
+  return list;
 }
 
 const broadcastState = () => raceStateRemote.FireAllClients(stateMessage());
@@ -85,7 +112,8 @@ function startRace() {
     if (entrants.size() < GRID_SIZE) entrants.push({ name: p.DisplayName, userId: p.UserId });
   }
   raceId++;
-  sim = new RaceSim(track, entrants);
+  // A fresh hazard layout every race; players' devices roll the same one from this seed.
+  sim = new RaceSim(track, entrants, math.random(1, 2 ** 30));
   lastReport.clear();
   goAt = now() + COUNTDOWN_SECONDS;
   enterPhase('countdown', COUNTDOWN_SECONDS);
@@ -119,9 +147,10 @@ Players.PlayerRemoving.Connect((player) => {
 
 const isNumber = (v: unknown): v is number => typeIs(v, 'number') && v === v;
 
-carStateRemote.OnServerEvent.Connect((player, id, x, z, heading, steer, vx, vz) => {
+carStateRemote.OnServerEvent.Connect((player, id, x, z, heading, steer, vx, vz, y) => {
   if (!sim || id !== raceId || (phase !== 'racing' && phase !== 'results')) return;
   if (!isNumber(x) || !isNumber(z) || !isNumber(heading) || !isNumber(steer) || !isNumber(vx) || !isNumber(vz)) return;
+  if (!isNumber(y)) return;
   const index = sim.indexOf(player.UserId);
   if (index < 0) return;
 
@@ -132,7 +161,13 @@ carStateRemote.OnServerEvent.Connect((player, id, x, z, heading, steer, vx, vz) 
     if (moved > MAX_REPORTED_SPEED * (t - last.t) + RESET_ALLOWANCE) return;
   }
   lastReport.set(index, { t, x, z });
-  sim.reportCar(index, { x, z, heading, steer: math.clamp(steer, -1, 1), vx, vz });
+  sim.reportCar(index, { x, z, heading, steer: math.clamp(steer, -1, 1), vx, vz, y: math.clamp(y, 0, MAX_REPORTED_HEIGHT) });
+});
+
+useItemRemote.OnServerEvent.Connect((player, id) => {
+  if (!sim || id !== raceId || phase !== 'racing') return;
+  const index = sim.indexOf(player.UserId);
+  if (index >= 0) sim.useItem(index);
 });
 
 let accumulator = 0;
@@ -150,6 +185,13 @@ RunService.Heartbeat.Connect((dt) => {
       accumulator -= STEP;
     }
 
+    // Pickups, firing, explosions and hits go out as they happen, with the state they changed.
+    const events = sim.drainEvents();
+    if (events.size() > 0) {
+      itemEventsRemote.FireAllClients(events);
+      broadcastState();
+    }
+
     if (phase === 'countdown' && sim.race.phase !== 'countdown') enterPhase('racing');
     else if (phase === 'racing' && raceOver(sim)) enterPhase('results', RESULTS_SECONDS);
     else if (phase === 'results' && t >= phaseEndsAt) {
@@ -164,8 +206,13 @@ RunService.Heartbeat.Connect((dt) => {
   if (sim && sinceSnapshot >= 1 / SEND_RATE) {
     sinceSnapshot = 0;
     const data: number[] = [];
-    for (const { car } of sim.racers) data.push(car.x, car.z, car.heading, car.steer, car.vx, car.vz);
-    if (data.size() === sim.racers.size() * CAR_FIELDS) snapshotRemote.FireAllClients(t, data);
+    for (const { car } of sim.racers) data.push(car.x, car.z, car.heading, car.steer, car.vx, car.vz, car.y);
+    let missiles = 0;
+    for (const m of sim.items.missiles) {
+      if (missiles++ >= MAX_SNAPSHOT_MISSILES) break;
+      data.push(m.id, m.x, m.z, m.heading);
+    }
+    snapshotRemote.FireAllClients(t, data);
   }
 
   sinceState += dt;

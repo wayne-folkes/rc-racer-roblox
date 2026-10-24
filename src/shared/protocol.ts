@@ -1,15 +1,21 @@
 // What the server and players' devices send each other. The server owns the race (AI cars, laps,
 // positions, results); each player's device drives that player's car and reports where it is.
 //
-//   player → server  CarState  (unreliable, 20 Hz): raceId, x, z, heading, steer, vx, vz
-//   server → all     Snapshot  (unreliable, 20 Hz): server time, then CAR_FIELDS numbers per racer
-//   server → all     RaceState (reliable, 4 Hz and on every phase change): RaceStateMessage
+//   player → server  CarState   (unreliable, 20 Hz): raceId, x, z, heading, steer, vx, vz, y
+//   player → server  UseItem    (reliable): raceId, when the player fires or drops their item
+//   server → all     Snapshot   (unreliable, 20 Hz): server time, CAR_FIELDS numbers per racer,
+//                               then MISSILE_FIELDS numbers per missile in flight
+//   server → all     RaceState  (reliable, 4 Hz, on every phase change and after item events):
+//                               RaceStateMessage
+//   server → all     ItemEvents (reliable, as they happen): ItemEvent[] (from items.ts)
 
 export const NET_FOLDER = 'Net';
 export const REMOTE = {
   carState: 'CarState',
   snapshot: 'Snapshot',
   raceState: 'RaceState',
+  useItem: 'UseItem',
+  itemEvents: 'ItemEvents',
 } as const;
 
 /** The wait between one race's results and the next race's grid. */
@@ -18,8 +24,10 @@ export const NEXT_LOBBY_SECONDS = 10;
 /** How often cars are reported, each way. */
 export const SEND_RATE = 20;
 
-/** Numbers per car in a snapshot: x, z, heading, steer, vx, vz. */
-export const CAR_FIELDS = 6;
+/** Numbers per car in a snapshot: x, z, heading, steer, vx, vz, y. */
+export const CAR_FIELDS = 7;
+/** Numbers per missile in a snapshot: id, x, z, heading. */
+export const MISSILE_FIELDS = 4;
 
 /**
  * waiting: nobody here. lobby: the timer to the next race is running. countdown: on the grid, 3-2-1.
@@ -54,4 +62,12 @@ export interface RaceStateMessage {
   finishTimes: number[];
   /** Players in the server, for the lobby screen. */
   playerCount: number;
+  /** Seeds the race's hazard dice, so every device places oil and puddles in the same spots. */
+  seed: number;
+  /** The item each racer holds ('missile', 'bomb', or '' for none), by racer index. */
+  items: string[];
+  /** Bombs on the track: id, x, z for each. */
+  bombs: number[];
+  /** Ids of item boxes that have been taken and haven't come back yet. */
+  pickupsDown: number[];
 }

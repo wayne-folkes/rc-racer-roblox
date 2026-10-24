@@ -44,7 +44,7 @@ export class Hud {
     this.banner = label(gui, 64, new UDim2(0.5, 0, 0.18, 0), new Vector2(0.5, 0.5));
     this.subtitle = label(gui, 20, new UDim2(0.5, 0, 0.18, 48), new Vector2(0.5, 0.5));
     this.info = label(gui, 22, new UDim2(1, -20, 0, 16), new Vector2(1, 0), Enum.TextXAlignment.Right);
-    this.info.Size = new UDim2(0, 300, 0, 90);
+    this.info.Size = new UDim2(0, 300, 0, 120);
     this.info.TextYAlignment = Enum.TextYAlignment.Top;
 
     this.results = new Instance('Frame');
@@ -92,6 +92,8 @@ export class Hud {
         info = `LAP ${lap}/${state.totalLaps}\n${ordinal(position)} of ${state.racers.size()}\n${formatTime(
           finish >= 0 ? finish : clock,
         )}`;
+        const held = state.items[myIndex];
+        if (held !== undefined && held !== '' && finish < 0) info += `\n${held.upper()} READY`;
         if (state.phase === 'racing' && clock < GO_SECONDS) banner = 'GO!';
         else if (finish >= 0) {
           banner = `${ordinal(position)}!`;

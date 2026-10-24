@@ -1,18 +1,24 @@
-import { createCar, stepCar, type CarInput, type CarState } from 'shared/carPhysics';
+import { createCar, DEFAULT_TUNING, type CarState } from 'shared/carPhysics';
 import { collideCars, collideWithWalls } from 'shared/collision';
 import { gridPosition, PLAYER_COLORS } from 'shared/grid';
-import { NET_FOLDER, REMOTE, SEND_RATE, type RaceStateMessage } from 'shared/protocol';
+import { NO_INPUT, stepWithEffects } from 'shared/handling';
+import { DEMO_LAYOUT, ItemSystem, type ItemEvent } from 'shared/items';
+import { buildRamps, updateHeight } from 'shared/jumps';
+import { CAR_FIELDS, NET_FOLDER, REMOTE, SEND_RATE, type RaceStateMessage } from 'shared/protocol';
 import { gridStart, MEADOW_LOOP, ROAD_TOP, trackPath } from 'shared/tracks';
 import { buildTrack } from './buildTrack';
 import { CarModel, type CarPose } from './carModel';
 import { DriveInput } from './driveInput';
 import { FollowCamera } from './followCamera';
 import { Hud } from './hud';
+import { ItemViews } from './itemViews';
 import { RemoteCars } from './remoteCars';
 
 // The player's side of a race. Our own car is driven here, at a fixed 120 Hz as in rc-racer's main.ts,
-// so it answers the controls instantly; the server is told where it is 20 times a second. Everyone
-// else's cars come from the server (remoteCars.ts). Between races the car can be driven anywhere.
+// so it answers the controls instantly; the server is told where it is 20 times a second. So are the
+// things that only touch our car: boost pads, oil, puddles and ramps. The server decides everything
+// between cars (pickups, missiles, bombs, hits) and sends everyone else's cars (remoteCars.ts).
+// Between races the car can be driven anywhere.
 
 const Players = game.GetService('Players');
 const RunService = game.GetService('RunService');
@@ -27,19 +33,29 @@ const STEP = 1 / 120;
 const MAX_FRAME = 0.1;
 /** A car that moved further than this in one step was put somewhere: drawn there, not slid there. */
 const SNAP_DISTANCE = 2;
-const NO_INPUT: CarInput = { throttle: 0, steer: 0, handbrake: false };
 
 const me = Players.LocalPlayer;
 const net = ReplicatedStorage.WaitForChild(NET_FOLDER);
 const carStateRemote = net.WaitForChild(REMOTE.carState) as UnreliableRemoteEvent;
 const snapshotRemote = net.WaitForChild(REMOTE.snapshot) as UnreliableRemoteEvent;
 const raceStateRemote = net.WaitForChild(REMOTE.raceState) as RemoteEvent;
+const useItemRemote = net.WaitForChild(REMOTE.useItem) as RemoteEvent;
+const itemEventsRemote = net.WaitForChild(REMOTE.itemEvents) as RemoteEvent;
 const serverNow = () => game.Workspace.GetServerTimeNow();
 
 const track = trackPath(MEADOW_LOOP);
 buildTrack(track, MEADOW_LOOP);
+const ramps = buildRamps(track, DEMO_LAYOUT.ramps ?? []);
 const start = gridStart(track);
 const car = createCar(start.x, start.z, start.heading);
+
+/**
+ * Our car's own items: boost pads, oil and puddles, and the timers for spins and boosts. Item boxes
+ * are left out, because the server hands out items. Built from the race's seed, so the hazards are
+ * where the server has them.
+ */
+const ownItems = (seed: number) => new ItemSystem(track, 1, { ...DEMO_LAYOUT, pickups: [] }, seed);
+let items = ownItems(1);
 
 const poseOf = (c: CarState): CarPose => ({ x: c.x, y: c.y, z: c.z, heading: c.heading, steer: c.steer });
 let prev = poseOf(car);
@@ -63,6 +79,9 @@ function placeCar(state: CarState) {
   car.vx = 0;
   car.vz = 0;
   car.steer = 0;
+  car.y = 0;
+  car.vy = 0;
+  car.airborne = false;
   prev = poseOf(car);
 }
 
@@ -78,11 +97,18 @@ const model = new CarModel(Color3.fromHex(PLAYER_COLORS[0]), 'MyCar');
 const input = new DriveInput();
 const hud = new Hud();
 const others = new RemoteCars(track);
+const itemViews = new ItemViews(track, ramps);
+itemViews.setLayout(items);
 camera.snapTo(car);
 
 let state: RaceStateMessage | undefined;
 /** Our racer index in the current race, or -1 when we're not in it. */
 let myIndex = -1;
+
+const inRace = () =>
+  state !== undefined &&
+  myIndex >= 0 &&
+  (state.phase === 'countdown' || state.phase === 'racing' || state.phase === 'results');
 
 raceStateRemote.OnClientEvent.Connect((message: RaceStateMessage) => {
   const newRace = state === undefined || message.raceId !== state.raceId;
@@ -96,27 +122,42 @@ raceStateRemote.OnClientEvent.Connect((message: RaceStateMessage) => {
     others.clear();
   } else if (newRace) {
     others.setRacers(message.racers, myIndex);
+    items = ownItems(message.seed);
+    itemViews.setLayout(items);
     if (myIndex >= 0) {
       placeCar(gridPosition(track, message.racers[myIndex].gridSlot));
       model.setColor(Color3.fromHex(message.racers[myIndex].color));
     }
   }
+  itemViews.syncState(message.pickupsDown, message.bombs);
 });
 
-snapshotRemote.OnClientEvent.Connect((time: number, data: number[]) => others.onSnapshot(time, data));
+snapshotRemote.OnClientEvent.Connect((time: number, data: number[]) => {
+  others.onSnapshot(time, data);
+  if (state) itemViews.onSnapshot(time, data, state.racers.size() * CAR_FIELDS);
+});
+
+itemEventsRemote.OnClientEvent.Connect((events: ItemEvent[]) => {
+  for (const e of events) {
+    // The server decided a missile or bomb got us: spin out here, on the car we drive.
+    if (e.type === 'explode' && e.victim === myIndex && inRace()) items.hit(0, car);
+    itemViews.onEvent(e);
+  }
+});
 
 let accumulator = 0;
 let sinceSent = 0;
 
 RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (frameDt) => {
   const now = serverNow();
+  const racing = inRace();
   const phase = state?.phase;
-  const inRace = state !== undefined && myIndex >= 0 && (phase === 'countdown' || phase === 'racing' || phase === 'results');
   // On the grid until GO; after the line, the car rolls to a stop.
-  const heldOnGrid = inRace && phase === 'countdown';
-  const finished = inRace && state!.finishTimes[myIndex] >= 0;
+  const heldOnGrid = racing && phase === 'countdown';
+  const finished = racing && state!.finishTimes[myIndex] >= 0;
 
   if (!heldOnGrid && input.consumeReset()) resetCar();
+  if (input.consumeFire() && racing && phase === 'racing' && !finished) useItemRemote.FireServer(state!.raceId);
   const controls = heldOnGrid || finished ? NO_INPUT : input.carInput();
 
   const otherCars = others.update(now, frameDt, ROAD_TOP);
@@ -125,25 +166,28 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
   while (accumulator >= STEP) {
     prev = poseOf(car);
     if (!heldOnGrid) {
-      stepCar(car, controls, STEP);
+      stepWithEffects(car, controls, STEP, DEFAULT_TUNING, items.status[0]);
       // Bumps move only our car; the other car's device (or the server, for AI) moves theirs.
-      if (inRace) for (const [, other] of otherCars) collideCars(car, { ...other });
-      collideWithWalls(car, track, STEP);
+      if (racing) for (const [, other] of otherCars) collideCars(car, { ...other });
+      const proj = collideWithWalls(car, track, STEP).proj;
+      updateHeight(car, proj, ramps, track.length, STEP);
+      items.update(STEP, [car], [proj]);
     }
     accumulator -= STEP;
   }
 
   sinceSent += frameDt;
-  if (inRace && (phase === 'racing' || phase === 'results') && sinceSent >= 1 / SEND_RATE) {
+  if (racing && (phase === 'racing' || phase === 'results') && sinceSent >= 1 / SEND_RATE) {
     sinceSent = 0;
-    carStateRemote.FireServer(state!.raceId, car.x, car.z, car.heading, car.steer, car.vx, car.vz);
+    carStateRemote.FireServer(state!.raceId, car.x, car.z, car.heading, car.steer, car.vx, car.vz, car.y);
   }
 
   const pose = blend(prev, car, accumulator / STEP);
   model.place({ ...pose, y: pose.y + ROAD_TOP });
+  itemViews.update(frameDt, now);
 
   // Watching a race we're not in: follow the leader.
-  const leader = !inRace && state && state.standings.size() > 0 ? others.shownCar(state.standings[0]) : undefined;
+  const leader = !racing && state && state.standings.size() > 0 ? others.shownCar(state.standings[0]) : undefined;
   camera.update(leader ?? car, frameDt);
   hud.update(state, myIndex, now);
 });
