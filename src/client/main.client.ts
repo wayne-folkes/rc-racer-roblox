@@ -13,6 +13,7 @@ import { FollowCamera } from './followCamera';
 import { Hud } from './hud';
 import { ItemViews } from './itemViews';
 import { MeteorShower } from './meteors';
+import { NetReadout } from './netReadout';
 import { RemoteCars } from './remoteCars';
 import { VoteMenu } from './voteMenu';
 import { WeatherView } from './weather';
@@ -103,6 +104,7 @@ const model = new CarModel(Color3.fromHex(PLAYER_COLORS[0]), 'MyCar');
 const input = new DriveInput();
 const hud = new Hud();
 const others = new RemoteCars();
+const netReadout = NetReadout.forOwner();
 let itemViews = new ItemViews(track, def.layout, ramps);
 itemViews.setLayout(items);
 const voteMenu = new VoteMenu((pick) => voteRemote.FireServer(pick));
@@ -176,6 +178,7 @@ raceStateRemote.OnClientEvent.Connect((message: RaceStateMessage) => {
 
 snapshotRemote.OnClientEvent.Connect((time: number, data: number[]) => {
   others.onSnapshot(time, data);
+  netReadout?.onSnapshot(time);
   if (state) itemViews.onSnapshot(time, data, state.racers.size() * CAR_FIELDS);
 });
 
@@ -220,8 +223,9 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
 
   sinceSent += frameDt;
   if (racing && (phase === 'racing' || phase === 'results') && sinceSent >= 1 / SEND_RATE) {
-    sinceSent = 0;
-    carStateRemote.FireServer(state!.raceId, car.x, car.z, car.heading, car.steer, car.vx, car.vz, car.y);
+    // Keep the remainder, as the server does with snapshots, so reports go out a steady 20 times a second.
+    sinceSent = math.min(sinceSent - 1 / SEND_RATE, 1 / SEND_RATE);
+    carStateRemote.FireServer(state!.raceId, now, car.x, car.z, car.heading, car.steer, car.vx, car.vz, car.y);
   }
 
   const pose = blend(prev, car, accumulator / STEP);
@@ -236,4 +240,5 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
   meteors?.update(frameDt, focus.x, focus.z);
   hud.update(state, myIndex, now, def.name);
   voteMenu.update(state);
+  netReadout?.update(frameDt, state);
 });

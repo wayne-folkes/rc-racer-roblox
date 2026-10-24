@@ -66,6 +66,64 @@ test('a full race: one player at the back, five AI cars, everyone finishes', () 
   for (let k = 1; k < order.length; k++) expect(times[order[k]]).toBeGreaterThanOrEqual(times[order[k - 1]]);
 });
 
+/** A car `lateral` to the right of the centreline at `distance`, heading along the track at `speed`. */
+function onTrack(distance: number, lateral: number, speed: number) {
+  const p = track.pointAt(distance);
+  return {
+    x: p.x - p.tz * lateral, z: p.z + p.tx * lateral, heading: Math.atan2(p.tz, p.tx),
+    steer: 0, vx: p.tx * speed, vz: p.tz * speed, y: 0,
+  };
+}
+
+/** The distance along the track where it bends most sharply over 10 m. */
+function sharpestBend() {
+  let best = 0;
+  let bestTurn = 0;
+  for (let d = 0; d < track.length; d += 1) {
+    const a = track.pointAt(d);
+    const b = track.pointAt(d + 10);
+    const turn = Math.abs(Math.atan2(a.tx * b.tz - a.tz * b.tx, a.tx * b.tx + a.tz * b.tz));
+    if (turn > bestTurn) [best, bestTurn] = [d, turn];
+  }
+  return best;
+}
+
+test("a player's report is carried on round the track for the time it took to reach the server", () => {
+  const sim = run(1, 0);
+  const d = sharpestBend();
+  sim.reportCar(5, onTrack(d, 1, 20));
+  expect(track.project(sim.racers[5].car.x, sim.racers[5].car.z).distance).toBeCloseTo(d, 6);
+  // Sent 0.15 s ago: 3 m further round, still 1 m right of the centreline, facing along the road.
+  sim.reportCar(5, onTrack(d, 1, 20), 0.15);
+  const car = sim.racers[5].car;
+  const proj = track.project(car.x, car.z);
+  expect(proj.distance).toBeCloseTo(d + 3, 1);
+  expect(proj.lateral).toBeCloseTo(1, 1);
+  expect(Math.cos(car.heading - Math.atan2(proj.tz, proj.tx))).toBeGreaterThan(0.999);
+  expect(Math.hypot(car.vx, car.vz)).toBeCloseTo(20, 10);
+});
+
+test("a player's car goes round a bend between reports instead of into the wall", () => {
+  const sim = run(1, 0);
+  const d = sharpestBend();
+  sim.reportCar(5, onTrack(d, 0, 20));
+  // Nothing more for 0.7 s, the longest wait seen on a phone over wifi.
+  for (let t = 0; t < 0.7; t += STEP) sim.step(STEP);
+  const proj = track.project(sim.racers[5].car.x, sim.racers[5].car.z);
+  expect(proj.distance).toBeCloseTo(d + 14, 0);
+  expect(Math.abs(proj.lateral)).toBeLessThan(0.1);
+  // In a straight line, it would have left the road.
+  const p = track.pointAt(d);
+  expect(Math.abs(track.project(p.x + p.tx * 14, p.z + p.tz * 14).lateral)).toBeGreaterThan(track.halfWidth);
+});
+
+test('a carried car keeps to the road when it was sliding towards a wall', () => {
+  const sim = run(1, 0);
+  const car = onTrack(sharpestBend(), 0, 0);
+  sim.reportCar(5, { ...car, vx: car.vx - 10 * Math.sin(car.heading), vz: car.vz + 10 * Math.cos(car.heading) }, 1);
+  expect(Math.abs(track.project(sim.racers[5].car.x, sim.racers[5].car.z).lateral)).toBeCloseTo(track.halfWidth, 6);
+});
+
 test('three players fill the back of the grid in join order', () => {
   const sim = run(3, 0);
   expect(sim.racers.map((r) => r.name)).toEqual(['Blue', 'Purple', 'Yellow', 'P2', 'P1', 'P0']);

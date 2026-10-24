@@ -51,6 +51,7 @@ allow links off the platform. Edit `design/icon.html` or `design/thumbnail.html`
 | Scenery and meteors match the web game | ✅ in Node: scenery plans keep clear of the road on all 16 tracks (and matched the web's placement exactly in a one-off comparison); meteor timings, landings and crater limits follow the web's |
 | Cups, votes, other tracks, scenery and weather in Studio | ⏳ not yet checked |
 | Multiplayer in Studio | ✅ (2026-10-23) a 2-player test races the AI and bumps feel right, after drawing other cars where they really are rather than easing behind them |
+| Other cars on a real phone | ✅ (2026-10-24) smooth on the published place, after carrying cars round the track through the phone's 0.68 s gaps in snapshots; other players' cars not yet checked from a second device |
 | Opens in Studio and drives round Meadow Loop | ✅ (2026-10-23) the track builds with no gaps on the bends, the car drives round it, and the camera matches the web game's view |
 
 Controls feel good with keyboard, gamepad and touch (Studio's device emulator, one finger at a time),
@@ -134,8 +135,16 @@ Friends in the same server race each other, with AI cars filling the grid.
   instantly, and reports it 20 times a second. The server sends every car's position 20 times a
   second and the race state 4 times a second (`shared/protocol.ts`).
 - **Other cars** (`client/remoteCars.ts`) are drawn where their latest report puts them *now*,
-  carried on by their velocity, and eased smoothly so corrections don't jump. Bumps use the same
-  positions, so a car is hit where it's seen.
+  carried on round the track for the time since (`shared/carry.ts`), and eased smoothly so
+  corrections don't jump. Bumps use the same positions, so a car is hit where it's seen. Each report
+  says when it was sent, so the server carries players' cars on for the trip too, and drops a report
+  that arrives after a newer one. On a phone over wifi, snapshots were seen to stop for up to 0.68 s
+  and then arrive in a bunch, with none lost; carrying cars on round the track (up to 1 s) rather
+  than in a straight line keeps them moving through that without running into the walls.
+- **Network readout** (`client/netReadout.ts`): the experience's owner, and anyone in Studio, sees
+  the place version, frame rate, ping, snapshots a second, the longest gaps between snapshots (by
+  when they were sent and when they arrived) and the server's longest frame. Stalls over 0.4 s are
+  printed, so they show in the Developer Console (`/console` in chat).
 - **Bumps:** each device moves only its own car, and the server moves only AI cars. When a player
   bumps an AI car, the server pushes the AI car and the player's device pushes the player's car; two
   players' devices each push their own. With lag a bump can feel a little one-sided, which is

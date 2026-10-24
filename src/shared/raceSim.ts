@@ -1,5 +1,6 @@
 import { AiDriver, rubberBand, type Obstacle } from './aiDriver';
 import { DEFAULT_TUNING, type CarState } from './carPhysics';
+import { anchorOf, carry, MAX_CARRY, type Anchor } from './carry';
 import { collideCars, collideWithWalls } from './collision';
 import { AI_RACERS, GRID_SIZE, gridPosition, PLAYER_COLORS, playerSlot, STAND_IN_SKILL } from './grid';
 import { NO_INPUT, stepWithEffects } from './handling';
@@ -12,7 +13,7 @@ import type { Projection, TrackPath } from './trackPath';
 
 // One multiplayer race, without rendering or networking: what the server runs. It's rc-racer's
 // world.ts reshaped for several players: AI cars are stepped here, each player's car is whatever its
-// owner last reported (moved on by its velocity between reports), and the race rules and items see
+// owner last reported (carried on round the track between reports, carry.ts), and the race rules and items see
 // them all the same. Items between cars (pickups, missiles, bombs, hits) are decided here; boost pads,
 // oil, puddles and ramps on a player's car are handled by that player's device.
 
@@ -49,6 +50,8 @@ export class RaceSim {
   /** Item uses asked for since the last step. */
   private readonly useRequested: boolean[] = [];
   private events: ItemEvent[] = [];
+  /** Each player car's latest report, by racer index, and how long ago it was sent (s). */
+  private readonly reports = new Map<number, { anchor: Anchor; age: number }>();
   private hazardObstacles: Obstacle[] | undefined;
   private padTargets: Obstacle[] | undefined;
 
@@ -100,16 +103,18 @@ export class RaceSim {
     return -1;
   }
 
-  /** Where a player's device says their car is. */
-  reportCar(index: number, state: Pick<CarState, 'x' | 'z' | 'heading' | 'steer' | 'vx' | 'vz' | 'y'>): void {
+  /**
+   * Where a player's device says their car is, `age` seconds ago: the car is carried on round the track
+   * for that long, so it isn't held back by the report's trip to the server, and on from there until
+   * the next report.
+   */
+  reportCar(index: number, state: Pick<CarState, 'x' | 'z' | 'heading' | 'steer' | 'vx' | 'vz' | 'y'>, age = 0): void {
     const car = this.racers[index].car;
-    car.x = state.x;
-    car.z = state.z;
-    car.heading = state.heading;
     car.steer = state.steer;
-    car.vx = state.vx;
-    car.vz = state.vz;
     car.y = state.y;
+    const report = { anchor: anchorOf(this.track, state), age };
+    this.reports.set(index, report);
+    carry(this.track, report.anchor, math.min(age, MAX_CARRY), car);
   }
 
   /** A player pressed fire: used on the next step, if they're racing and not spinning. */
@@ -171,8 +176,11 @@ export class RaceSim {
     racers.forEach((racer, i) => {
       if (!racer.driver) {
         // A player's car: carry it along between reports.
-        racer.car.x += racer.car.vx * dt;
-        racer.car.z += racer.car.vz * dt;
+        const report = this.reports.get(i);
+        if (report) {
+          report.age += dt;
+          carry(track, report.anchor, math.min(report.age, MAX_CARRY), racer.car);
+        }
         return;
       }
       let input = NO_INPUT;

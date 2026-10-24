@@ -4,6 +4,7 @@ import { GRID_SIZE } from 'shared/grid';
 import { COUNTDOWN_SECONDS, TOTAL_LAPS } from 'shared/race';
 import { RaceSim, type Entrant } from 'shared/raceSim';
 import {
+  MAX_REPORT_AGE,
   NET_FOLDER,
   REMOTE,
   SEND_RATE,
@@ -97,8 +98,16 @@ let track: TrackDef = TRACKS[0];
 let vote: { options: VoteOption[]; picks: Map<number, number> } | undefined;
 /** Who scores for each car of the race, fixed at the start so a player's points stay theirs. */
 let scorers: Scorer[] = [];
-/** Each player car's last accepted report, by racer index, for the speed check. */
-const lastReport = new Map<number, { t: number; x: number; z: number }>();
+/**
+ * Each player car's last accepted report, by racer index: when it arrived and where it put the car,
+ * for the speed check, and when it was sent, so a report that arrives late and out of order is dropped.
+ */
+const lastReport = new Map<number, { t: number; sentAt: number; x: number; z: number }>();
+/** The longest frame (s) in this stretch of WORST_FRAME_WINDOW and the one before, for the owner's readout. */
+let worstFrame = 0;
+let previousWorstFrame = 0;
+let sinceWorstFrame = 0;
+const WORST_FRAME_WINDOW = 5;
 
 function stateMessage(): RaceStateMessage {
   return {
@@ -133,6 +142,7 @@ function stateMessage(): RaceStateMessage {
           }))
         : [],
     cupFinal: mode?.kind === 'cup' && mode.cup.done() && phase === 'results',
+    serverWorstFrame: math.max(worstFrame, previousWorstFrame),
   };
 }
 
@@ -270,21 +280,24 @@ voteRemote.OnServerEvent.Connect((player, pick) => {
 
 const isNumber = (v: unknown): v is number => typeIs(v, 'number') && v === v;
 
-carStateRemote.OnServerEvent.Connect((player, id, x, z, heading, steer, vx, vz, y) => {
+carStateRemote.OnServerEvent.Connect((player, id, sentAt, x, z, heading, steer, vx, vz, y) => {
   if (!sim || id !== raceId || (phase !== 'racing' && phase !== 'results')) return;
   if (!isNumber(x) || !isNumber(z) || !isNumber(heading) || !isNumber(steer) || !isNumber(vx) || !isNumber(vz)) return;
-  if (!isNumber(y)) return;
+  if (!isNumber(y) || !isNumber(sentAt)) return;
   const index = sim.indexOf(player.UserId);
   if (index < 0) return;
 
   const t = os.clock();
   const last = lastReport.get(index);
   if (last) {
+    // Unreliable messages can arrive out of order: an older report would pull the car backwards.
+    if (sentAt <= last.sentAt) return;
     const moved = math.sqrt((x - last.x) ** 2 + (z - last.z) ** 2);
     if (moved > MAX_REPORTED_SPEED * (t - last.t) + RESET_ALLOWANCE) return;
   }
-  lastReport.set(index, { t, x, z });
-  sim.reportCar(index, { x, z, heading, steer: math.clamp(steer, -1, 1), vx, vz, y: math.clamp(y, 0, MAX_REPORTED_HEIGHT) });
+  lastReport.set(index, { t, sentAt, x, z });
+  const age = math.clamp(now() - sentAt, 0, MAX_REPORT_AGE);
+  sim.reportCar(index, { x, z, heading, steer: math.clamp(steer, -1, 1), vx, vz, y: math.clamp(y, 0, MAX_REPORTED_HEIGHT) }, age);
 });
 
 useItemRemote.OnServerEvent.Connect((player, id) => {
@@ -299,6 +312,13 @@ let sinceState = 0;
 
 RunService.Heartbeat.Connect((dt) => {
   const t = now();
+  worstFrame = math.max(worstFrame, dt);
+  sinceWorstFrame += dt;
+  if (sinceWorstFrame >= WORST_FRAME_WINDOW) {
+    previousWorstFrame = worstFrame;
+    worstFrame = 0;
+    sinceWorstFrame = 0;
+  }
   if (phase === 'vote' && t >= phaseEndsAt) closeVote();
   else if (phase === 'lobby' && t >= phaseEndsAt) startRace();
 
@@ -323,7 +343,9 @@ RunService.Heartbeat.Connect((dt) => {
 
   sinceSnapshot += dt;
   if (sim && sinceSnapshot >= 1 / SEND_RATE) {
-    sinceSnapshot = 0;
+    // Keep the remainder, so snapshots go out 20 times a second rather than every third or fourth
+    // frame; after a hitch, start afresh rather than sending a burst.
+    sinceSnapshot = math.min(sinceSnapshot - 1 / SEND_RATE, 1 / SEND_RATE);
     const data: number[] = [];
     for (const { car } of sim.racers) data.push(car.x, car.z, car.heading, car.steer, car.vx, car.vz, car.y);
     let missiles = 0;

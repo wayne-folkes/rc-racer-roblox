@@ -1,7 +1,8 @@
 // Luau globals and roblox-ts array methods the ported code expects, so it runs under Node.
 const g = globalThis as any;
 g.math = { huge: Infinity, pi: Math.PI, abs: Math.abs, atan2: Math.atan2, cos: Math.cos, exp: Math.exp,
-  floor: Math.floor, sqrt: Math.sqrt, max: Math.max, min: Math.min, pow: Math.pow, sign: Math.sign, sin: Math.sin };
+  floor: Math.floor, sqrt: Math.sqrt, max: Math.max, min: Math.min, pow: Math.pow, sign: Math.sign, sin: Math.sin,
+  clamp: (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x)) };
 (Array.prototype as any).size = function () { return this.length; };
 
 // roblox-ts sort comparators return a boolean ("a goes before b"), as Luau's table.sort expects.

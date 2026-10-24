@@ -1,7 +1,8 @@
 // What the server and players' devices send each other. The server owns the race (AI cars, laps,
 // positions, results); each player's device drives that player's car and reports where it is.
 //
-//   player → server  CarState   (unreliable, 20 Hz): raceId, x, z, heading, steer, vx, vz, y
+//   player → server  CarState   (unreliable, 20 Hz): raceId, sentAt (server time), x, z, heading,
+//                               steer, vx, vz, y
 //   player → server  UseItem    (reliable): raceId, when the player fires or drops their item
 //   player → server  Vote       (reliable): the index of the option the player picks in a vote
 //   server → all     Snapshot   (unreliable, 20 Hz): server time, CAR_FIELDS numbers per racer,
@@ -23,6 +24,12 @@ export const REMOTE = {
 
 /** How often cars are reported, each way. */
 export const SEND_RATE = 20;
+
+/**
+ * A player's report is carried on by its velocity for the time it took to reach the server, up to
+ * this long (s). Longer than a phone's usual trip, short enough that a stale report can't fling a car.
+ */
+export const MAX_REPORT_AGE = 0.5;
 
 /** Numbers per car in a snapshot: x, z, heading, steer, vx, vz, y. */
 export const CAR_FIELDS = 7;
@@ -93,4 +100,6 @@ export interface RaceStateMessage {
   cup: StandingView[];
   /** True on the results after a cup's last race. */
   cupFinal: boolean;
+  /** The server's longest frame (s) over the last few seconds, for the owner's network readout. */
+  serverWorstFrame: number;
 }
