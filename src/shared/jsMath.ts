@@ -14,6 +14,8 @@ export const Math = {
   max: (a: number, b: number) => math.max(a, b),
   min: (a: number, b: number) => math.min(a, b),
   pow: (x: number, y: number) => math.pow(x, y),
+  // JS rounds halves up (Math.round(-2.5) is -2), unlike math.round, which rounds them away from zero.
+  round: (x: number) => math.floor(x + 0.5),
   sign: (x: number) => math.sign(x),
   sin: (x: number) => math.sin(x),
   sqrt: (x: number) => math.sqrt(x),

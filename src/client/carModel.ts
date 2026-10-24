@@ -25,15 +25,19 @@ export class CarModel {
   /** Each part's place relative to the car, whether it's a wheel, and whether it steers. */
   private readonly offsets: { offset: CFrame; wheel: boolean; steers: boolean }[] = [];
   private readonly cframes: CFrame[] = [];
+  /** The body panels in the car's colour, for repainting it. */
+  private readonly paintParts: Part[] = [];
 
-  constructor(color = Color3.fromHex('#e63946')) {
+  constructor(color = Color3.fromHex('#e63946'), name = 'Car') {
     const paint = color;
     const dark = Color3.fromHex('#1d2430');
     const glass = Color3.fromHex('#9fd3ff');
     const tyre = Color3.fromHex('#222222');
 
-    const box = (w: number, h: number, d: number, c: Color3, x: number, y: number, z: number, roll = 0) =>
-      this.add('Block', new Vector3(w, h, d), c, new CFrame(x, y, z).mul(CFrame.Angles(0, 0, roll)));
+    const box = (w: number, h: number, d: number, c: Color3, x: number, y: number, z: number, roll = 0) => {
+      const part = this.add('Block', new Vector3(w, h, d), c, new CFrame(x, y, z).mul(CFrame.Angles(0, 0, roll)));
+      if (c === paint) this.paintParts.push(part);
+    };
 
     box(2.2, 0.32, 1.1, paint, 0, 0.42, 0); // chassis
     box(0.6, 0.22, 1.0, paint, 0.95, 0.38, 0); // nose
@@ -50,8 +54,35 @@ export class CarModel {
       }
     }
 
-    this.model.Name = 'PlayerCar';
+    this.model.Name = name;
     this.model.Parent = game.Workspace;
+  }
+
+  setColor(color: Color3): void {
+    for (const part of this.paintParts) part.Color = color;
+  }
+
+  /** Shows a name above the car, for other players' and AI cars. */
+  setLabel(text: string): void {
+    const gui = new Instance('BillboardGui');
+    gui.Size = new UDim2(0, 160, 0, 24);
+    gui.StudsOffsetWorldSpace = new Vector3(0, 2.4, 0);
+    gui.AlwaysOnTop = true;
+    gui.Adornee = this.parts[0];
+    const label = new Instance('TextLabel');
+    label.BackgroundTransparency = 1;
+    label.Size = new UDim2(1, 0, 1, 0);
+    label.Font = Enum.Font.GothamBold;
+    label.TextSize = 14;
+    label.TextColor3 = new Color3(1, 1, 1);
+    label.TextStrokeTransparency = 0.4;
+    label.Text = text;
+    label.Parent = gui;
+    gui.Parent = this.model;
+  }
+
+  destroy(): void {
+    this.model.Destroy();
   }
 
   private add(shape: 'Block' | 'Cylinder', size: Vector3, color: Color3, offset: CFrame, steers = false) {
@@ -68,6 +99,7 @@ export class CarModel {
     this.parts.push(part);
     this.offsets.push({ offset, wheel: shape === 'Cylinder', steers });
     this.cframes.push(offset);
+    return part;
   }
 
   /** Puts the car at a pose: heading as in carPhysics.ts, so yaw is its negative in Roblox's frame. */
