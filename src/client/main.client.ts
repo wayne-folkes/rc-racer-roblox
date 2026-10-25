@@ -13,6 +13,7 @@ import {
   type RaceStateMessage,
   type RecordsMessage,
 } from 'shared/protocol';
+import { distanceVolume, engineNote } from 'shared/sound';
 import { gridStart, ROAD_TOP, trackById, TRACKS, trackPath, type TrackDef } from 'shared/tracks';
 import { DEFAULT_VEHICLE, VEHICLES, type VehicleId } from 'shared/vehicles';
 import { buildTrack } from './buildTrack';
@@ -25,6 +26,8 @@ import { MeteorShower } from './meteors';
 import { NetReadout } from './netReadout';
 import { RecordsPanel } from './recordsPanel';
 import { RemoteCars } from './remoteCars';
+import { Sounds, type SoundName } from './sound';
+import { SoundPanel } from './soundPanel';
 import { VehiclePanel } from './vehiclePanel';
 import { VoteMenu } from './voteMenu';
 import { WeatherView } from './weather';
@@ -122,6 +125,8 @@ let profile: ProfileMessage | undefined;
 let myColor = Color3.fromHex(PLAYER_COLORS[0]);
 let model = new CarModel(myColor, 'MyCar', picked);
 const input = new DriveInput();
+const sounds = new Sounds();
+new SoundPanel(sounds);
 const hud = new Hud();
 const others = new RemoteCars();
 const netReadout = NetReadout.forOwner();
@@ -181,15 +186,49 @@ const inRace = () =>
   myIndex >= 0 &&
   (state.phase === 'countdown' || state.phase === 'racing' || state.phase === 'results');
 
+/** Where sounds are heard from: the car the camera follows. */
+let listenerX = car.x;
+let listenerZ = car.z;
+const heardAt = (x: number, z: number) => distanceVolume(math.sqrt((x - listenerX) ** 2 + (z - listenerZ) ** 2));
+
+const ITEM_SOUNDS: Partial<Record<ItemEvent['type'], SoundName>> = {
+  pickup: 'pickup',
+  fire: 'fire',
+  drop: 'drop',
+  explode: 'explode',
+  boost: 'boost',
+  splash: 'splash',
+  slick: 'skid',
+};
+
+/** The laps we'd completed, and whether we'd finished, in the last race state: a change plays a jingle. */
+let lapsBefore = 0;
+let finishedBefore = false;
+
+/** GO, and a jingle for each lap, the final lap and the finish, as the server's state says they happen. */
+function playRaceSounds(before: RaceStateMessage | undefined, now: RaceStateMessage, newRace: boolean) {
+  const laps = myIndex >= 0 ? now.laps[myIndex] ?? 0 : 0;
+  const finished = myIndex >= 0 && (now.finishTimes[myIndex] ?? -1) >= 0;
+  if (!newRace && myIndex >= 0) {
+    if (before?.phase === 'countdown' && now.phase === 'racing') sounds.play('go');
+    if (finished && !finishedBefore) sounds.play('finish');
+    else if (!finished && laps > lapsBefore) sounds.play(laps === now.totalLaps - 1 ? 'finalLap' : 'lap');
+  }
+  lapsBefore = laps;
+  finishedBefore = finished;
+}
+
 raceStateRemote.OnClientEvent.Connect((message: RaceStateMessage) => {
   const named = trackById(message.trackId);
   if (named) switchTrack(named);
   const newRace = state === undefined || message.raceId !== state.raceId;
+  const before = state;
   state = message;
   myIndex = -1;
   message.racers.forEach((r, i) => {
     if (r.userId === me.UserId) myIndex = i;
   });
+  playRaceSounds(before, message, newRace);
 
   if (message.racers.size() === 0) {
     others.clear();
@@ -218,11 +257,55 @@ itemEventsRemote.OnClientEvent.Connect((events: ItemEvent[]) => {
     // The server decided a missile or bomb got us: spin out here, on the car we drive.
     if (e.type === 'explode' && e.victim === myIndex && inRace()) items.hit(0, car);
     itemViews.onEvent(e);
+    // Our own boosts, oil and puddles are heard from our own items (below), straight away.
+    const ours = (e.type === 'boost' || e.type === 'slick' || e.type === 'splash') && e.racer === myIndex;
+    const name = ITEM_SOUNDS[e.type];
+    if (name && !ours) sounds.play(name, heardAt(e.x, e.z));
   }
 });
 
 let accumulator = 0;
 let sinceSent = 0;
+/** The countdown number last beeped, so each of 3, 2, 1 beeps once. */
+let lastBeep = 0;
+
+const speedOf = (c: CarState) => math.sqrt(c.vx * c.vx + c.vz * c.vz);
+
+/**
+ * Our engine, or the leader's while we watch a race (`leaderIndex`), and the nearest other car's,
+ * fading with distance.
+ */
+function updateEngines(
+  focus: CarState,
+  leaderIndex: number | undefined,
+  otherCars: Map<number, CarState>,
+  dt: number,
+  throttle: number,
+  topSpeed: number,
+) {
+  sounds.engine('player', engineNote(speedOf(focus), leaderIndex === undefined ? throttle : 1, topSpeed), dt);
+  let nearest: CarState | undefined;
+  let nearestDistance = math.huge;
+  for (const [i, other] of otherCars) {
+    const d = math.sqrt((other.x - focus.x) ** 2 + (other.z - focus.z) ** 2);
+    if (i !== leaderIndex && d < nearestDistance) {
+      nearest = other;
+      nearestDistance = d;
+    }
+  }
+  if (!nearest) {
+    sounds.quietEngine('rival', dt);
+    return;
+  }
+  const theirs = engineNote(speedOf(nearest), 1, topSpeed);
+  // Detuned a little from ours, so the two don't merge into one note.
+  sounds.engine(
+    'rival',
+    { pitch: theirs.pitch * 1.07, volume: theirs.volume * 0.6 * math.max(0, 1 - nearestDistance / 40) },
+    dt,
+  );
+}
+
 
 RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (frameDt) => {
   const now = serverNow();
@@ -237,7 +320,8 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
 
   if (!heldOnGrid && input.consumeReset()) resetCar();
   if (input.consumeFire() && racing && phase === 'racing' && !finished) useItemRemote.FireServer(state!.raceId);
-  const controls = heldOnGrid || finished ? NO_INPUT : input.carInput();
+  const wanted = input.carInput();
+  const controls = heldOnGrid || finished ? NO_INPUT : wanted;
 
   const otherCars = others.update(now, frameDt, ROAD_TOP);
 
@@ -249,11 +333,23 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
       // Bumps move only our car; the other car's device (or the server, for AI) moves theirs.
       if (racing) for (const [, other] of otherCars) collideCars(car, { ...other });
       const proj = collideWithWalls(car, track, STEP).proj;
-      updateHeight(car, proj, ramps, track.length, STEP);
+      const jump = updateHeight(car, proj, ramps, track.length, STEP);
+      if (jump) sounds.play(jump);
       items.update(STEP, [car], [proj]);
     }
     accumulator -= STEP;
   }
+  for (const e of items.drainEvents()) {
+    const name = ITEM_SOUNDS[e.type];
+    if (name) sounds.play(name);
+  }
+
+  // 3, 2, 1 on the grid; GO comes with the state that starts the race.
+  if (heldOnGrid) {
+    const n = math.ceil(state!.phaseEndsAt - now);
+    if (n !== lastBeep && n >= 1 && n <= 3) sounds.play('beep');
+    lastBeep = n;
+  } else lastBeep = 0;
 
   sinceSent += frameDt;
   if (racing && (phase === 'racing' || phase === 'results') && sinceSent >= 1 / SEND_RATE) {
@@ -272,8 +368,13 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
   itemViews.update(frameDt, now);
 
   // Watching a race we're not in: follow the leader.
-  const leader = !racing && state && state.standings.size() > 0 ? others.shownCar(state.standings[0]) : undefined;
+  const leaderIndex = !racing && state && state.standings.size() > 0 ? state.standings[0] : undefined;
+  const leader = leaderIndex !== undefined ? others.shownCar(leaderIndex) : undefined;
   const focus = leader ?? car;
+  listenerX = focus.x;
+  listenerZ = focus.z;
+  // The throttle the player is pressing, so they can rev on the grid.
+  updateEngines(focus, leader ? leaderIndex : undefined, otherCars, frameDt, wanted.throttle, tuning.maxSpeed);
   camera.update(focus, frameDt);
   weather?.update(frameDt, focus.x, focus.z);
   meteors?.update(frameDt, focus.x, focus.z);

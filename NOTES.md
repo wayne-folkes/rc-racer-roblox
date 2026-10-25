@@ -206,7 +206,7 @@ Friends in the same server race each other, with AI cars filling the grid.
 | 3D look | Rewrite | Rewrite, as expected. Parts are quick to build with; scenery, ramps, items and weather are the bulk of the work. |
 | Camera | Low | **Low**, done. Whether the narrow lens looks right is still to be seen in Studio. |
 | Input | Easier than today | **Easier for keys and gamepad.** Touch needed custom buttons, because ContextActionService's own buttons all sit bottom right. |
-| Sound | Medium | Not tried. |
+| Sound | Medium | **Low**, with stock sounds. Roblox can't synthesize, so `client/sound.ts` plays free Creator Store sounds (Roblox's own, and the Pro Sound Effects and APM libraries Roblox licenses), needing no upload or moderation. The engine is one recorded loop, sped up along the web's two-gear curve (`shared/sound.ts`). |
 | Saving | Low–medium | Not tried. |
 | Tests | Medium | **Cheaper than expected.** Shared modules can be tested in Node under vitest with a small shim (Luau `math`, `Array.prototype.size`, and boolean `sort` comparators), which is how the parity checks ran. Jest-Lua or Lune is only needed for Roblox-facing code. |
 
@@ -232,7 +232,10 @@ Friends in the same server race each other, with AI cars filling the grid.
    single-player season (prize money, upgrades, the garage) isn't ported: it would need saving
    (step 6) to work across sessions.
 4. **Menus** in ScreenGui (title, garage, settings): **3–4 days.**
-5. **Sound**: record the synthesized sounds to files, upload, wait for moderation: **1–2 days.**
+5. ~~**Sound**~~: done with stock Creator Store sounds: engine (ours and the nearest car's), countdown and GO, items,
+   boosts, oil, puddles, jumps, laps, final lap and finish, plus a mute button, volume steps and M to mute.
+   Still to do: save the sound setting in the profile (it lasts a session), and, if wanted, swap in recordings
+   of the web's own synthesized sounds for its retro feel (upload and moderation, about a day).
 6. **Saving and leaderboards** with DataStoreService: **1–2 days.**
 7. **Multiplayer polish**: private servers for friend groups, tighter cheat checks, playtesting
    under real lag (Studio's network simulator): **3–5 days.**

@@ -51,10 +51,11 @@ export class Hud {
     this.heading.Font = Enum.Font.GothamBold;
     this.banner = label(gui, 64, new UDim2(0.5, 0, 0.18, 0), new Vector2(0.5, 0.5));
     this.subtitle = label(gui, 20, new UDim2(0.5, 0, 0.18, 48), new Vector2(0.5, 0.5));
-    this.info = label(gui, 22, new UDim2(1, -20, 0, 16), new Vector2(1, 0), Enum.TextXAlignment.Right);
+    // Below the sound controls (soundPanel.ts).
+    this.info = label(gui, 22, new UDim2(1, -20, 0, 58), new Vector2(1, 0), Enum.TextXAlignment.Right);
     this.info.Size = new UDim2(0, 300, 0, 120);
     this.info.TextYAlignment = Enum.TextYAlignment.Top;
-    this.chase = label(gui, 16, new UDim2(1, -20, 0, 140), new Vector2(1, 0), Enum.TextXAlignment.Right);
+    this.chase = label(gui, 16, new UDim2(1, -20, 0, 182), new Vector2(1, 0), Enum.TextXAlignment.Right);
     this.chase.Size = new UDim2(0, 300, 0, 24);
     this.chase.Font = Enum.Font.GothamBold;
 

@@ -30,7 +30,7 @@ const TOUCH_STICK_TRAVEL = (TOUCH_STICK_WIDTH - TOUCH_KNOB_SIZE) / 2;
 const TOUCH_DEADZONE = 0.08;
 
 /** The controls, as shown along the bottom of the screen for the device in use. */
-const KEYBOARD_HINT = 'WASD / arrows to drive · Space to drift · X to use item · R to reset';
+const KEYBOARD_HINT = 'WASD / arrows to drive · Space to drift · X to use item · R to reset · M to mute';
 const GAMEPAD_HINT = 'RT to drive · LT to brake · LB / RB to drift · B to use item · Y to reset';
 
 const deadzone = (v: number, zone = STICK_DEADZONE) => {
