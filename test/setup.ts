@@ -5,6 +5,8 @@ g.math = { huge: Infinity, pi: Math.PI, abs: Math.abs, atan2: Math.atan2, cos: M
   clamp: (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x)),
   // Luau rounds halves away from zero; the same as JavaScript's for the positive numbers used here.
   round: Math.round };
+// roblox-ts's typeIs, as Luau names types: a Luau table is a JavaScript object (or Map, as a stored table is read).
+g.typeIs = (value: unknown, type: string) => (type === 'table' ? typeof value === 'object' && value !== null : typeof value === type);
 (Array.prototype as any).size = function () { return this.length; };
 (Array.prototype as any).insert = function (index: number, value: unknown) { this.splice(index, 0, value); };
 

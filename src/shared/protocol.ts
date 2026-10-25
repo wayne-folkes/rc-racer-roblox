@@ -7,7 +7,8 @@ import type { VehicleId } from './vehicles';
 //                               steer, vx, vz, y
 //   player → server  UseItem    (reliable): raceId, when the player fires or drops their item
 //   player → server  Vote       (reliable): the index of the option the player picks in a vote
-//   player → server  ChooseVehicle (reliable): the VehicleId the player picks, for their next race
+//   player → server  ChooseVehicle (reliable): the VehicleId the player picks, for their next race; the
+//                               server ignores a locked or unknown vehicle
 //   server → all     Snapshot   (unreliable, 20 Hz): server time, CAR_FIELDS numbers per racer,
 //                               then MISSILE_FIELDS numbers per missile in flight
 //   server → all     RaceState  (reliable, 4 Hz, on every phase change and after item events):
@@ -15,6 +16,7 @@ import type { VehicleId } from './vehicles';
 //   server → all     ItemEvents (reliable, as they happen): ItemEvent[] (from items.ts)
 //   server → player  Records    (reliable, when the track changes, on joining, and after a new best):
 //                               RecordsMessage, with that player's own bests
+//   server → player  Profile    (reliable, on joining, after a vehicle pick, and after a cup): ProfileMessage
 
 export const NET_FOLDER = 'Net';
 export const REMOTE = {
@@ -26,8 +28,8 @@ export const REMOTE = {
   chooseVehicle: 'ChooseVehicle',
   itemEvents: 'ItemEvents',
   records: 'Records',
+  profile: 'Profile',
 } as const;
-
 
 /** How often cars are reported, each way. */
 export const SEND_RATE = 20;
@@ -133,4 +135,19 @@ export interface RecordsMessage {
   /** Set when the player has just beaten their own best on this track. */
   newRace: boolean;
   newLap: boolean;
+}
+
+/** A player's progress, for the vehicle panel (and, from step 4, the vote menu and results). */
+export interface ProfileMessage {
+  /** False if the profile couldn't be loaded: the buggy only, and progress may not be saved. */
+  available: boolean;
+  /** The vehicle picked for the next race. */
+  vehicle: VehicleId;
+  /** The vehicles the player can pick, in VEHICLE_IDS order. Locked ones get their hint from unlocks.ts. */
+  unlocked: VehicleId[];
+  /** Best trophy per circuit id. */
+  trophies: Record<string, number>;
+  rivalWins: number;
+  /** What was just earned, for the results screen; empty except on the send after a cup (step 4). */
+  news: string[];
 }

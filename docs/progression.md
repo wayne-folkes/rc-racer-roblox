@@ -208,8 +208,8 @@ interface ProfileMessage {
   /** False if the profile couldn't be loaded: buggy only, nothing saved. */
   available: boolean;
   vehicle: VehicleId;
-  /** Every vehicle, in order, whether it's unlocked, and the hint for one that isn't. */
-  vehicles: { id: VehicleId; unlocked: boolean; hint: string }[];
+  /** The vehicles the player can pick. Locked ones get their hint from shared/unlocks.ts. */
+  unlocked: VehicleId[];
   /** Best trophy per circuit id, for the vote menu. */
   trophies: Record<string, number>;
   rivalWins: number;
@@ -265,8 +265,9 @@ saved and applies at the next race start.
 2. **Vehicles end to end, everything unlocked:** `vehicles.ts`, the truck model, per-vehicle tuning
    on devices and the server, `RacerView.vehicle`, the vehicle panel and `ChooseVehicle`. Check it in
    Studio with 2 players.
-3. **The profile:** the store, load and save, a remembered pick, and locking the truck. The vehicle
-   cards gain their 3D views, shown as silhouettes while locked.
+3. **The profile:** the store, load and save, a remembered pick, race counts and wins saved at each
+   race's end, and locking the truck. The vehicle cards gain their 3D views, shown as silhouettes
+   while locked.
 4. **Cup awards:** `races` on standings, `cupAwards`, the save at cup end, and the results-screen news
    and trophies.
 5. **Badges:** create the five in the Creator Dashboard, fill in their ids, and check them on the

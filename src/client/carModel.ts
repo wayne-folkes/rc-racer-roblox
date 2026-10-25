@@ -100,7 +100,13 @@ export class CarModel {
   /** The body panels in the car's colour, for repainting it. */
   private readonly paintParts: Part[] = [];
 
-  constructor(color = Color3.fromHex('#e63946'), name = 'Car', vehicle: VehicleId = DEFAULT_VEHICLE) {
+  constructor(
+    color = Color3.fromHex('#e63946'),
+    name = 'Car',
+    vehicle: VehicleId = DEFAULT_VEHICLE,
+    /** Where the model goes: the Workspace for a car on the track, a ViewportFrame for a card. */
+    parent: Instance = game.Workspace,
+  ) {
     this.vehicle = vehicle;
     const shape = SHAPES[vehicle];
     const paint = color;
@@ -124,7 +130,7 @@ export class CarModel {
     }
 
     this.model.Name = name;
-    this.model.Parent = game.Workspace;
+    this.model.Parent = parent;
   }
 
   setColor(color: Color3): void {
@@ -164,10 +170,14 @@ export class CarModel {
     part.Material = Enum.Material.SmoothPlastic;
     part.Size = size;
     part.Color = color;
+    // Where place() would put it for a car at the origin facing +X, so a model that's never placed
+    // (a vehicle card's) still shows the car.
+    const at = shape === 'Cylinder' ? offset.mul(AXLE) : offset;
+    part.CFrame = at;
     part.Parent = this.model;
     this.parts.push(part);
     this.offsets.push({ offset, wheel: shape === 'Cylinder', steers });
-    this.cframes.push(offset);
+    this.cframes.push(at);
     return part;
   }
 

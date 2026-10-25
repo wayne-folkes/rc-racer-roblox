@@ -4,7 +4,15 @@ import { gridPosition, PLAYER_COLORS } from 'shared/grid';
 import { NO_INPUT, stepWithEffects } from 'shared/handling';
 import { ItemSystem, type ItemEvent } from 'shared/items';
 import { buildRamps, updateHeight } from 'shared/jumps';
-import { CAR_FIELDS, NET_FOLDER, REMOTE, SEND_RATE, type RaceStateMessage, type RecordsMessage } from 'shared/protocol';
+import {
+  CAR_FIELDS,
+  NET_FOLDER,
+  REMOTE,
+  SEND_RATE,
+  type ProfileMessage,
+  type RaceStateMessage,
+  type RecordsMessage,
+} from 'shared/protocol';
 import { gridStart, ROAD_TOP, trackById, TRACKS, trackPath, type TrackDef } from 'shared/tracks';
 import { DEFAULT_VEHICLE, VEHICLES, type VehicleId } from 'shared/vehicles';
 import { buildTrack } from './buildTrack';
@@ -50,6 +58,7 @@ const useItemRemote = net.WaitForChild(REMOTE.useItem) as RemoteEvent;
 const itemEventsRemote = net.WaitForChild(REMOTE.itemEvents) as RemoteEvent;
 const voteRemote = net.WaitForChild(REMOTE.vote) as RemoteEvent;
 const chooseVehicleRemote = net.WaitForChild(REMOTE.chooseVehicle) as RemoteEvent;
+const profileRemote = net.WaitForChild(REMOTE.profile) as RemoteEvent;
 const recordsRemote = net.WaitForChild(REMOTE.records) as RemoteEvent;
 const serverNow = () => game.Workspace.GetServerTimeNow();
 
@@ -107,6 +116,8 @@ while (!game.Workspace.CurrentCamera) task.wait();
 const camera = new FollowCamera(game.Workspace.CurrentCamera);
 /** The vehicle the player has picked, for their next race. */
 let picked: VehicleId = DEFAULT_VEHICLE;
+/** The server's latest word on the player's profile: the pick, what's unlocked, and whether it's saved. */
+let profile: ProfileMessage | undefined;
 /** Our car's colour: the player's own in a race, the first player colour until then. */
 let myColor = Color3.fromHex(PLAYER_COLORS[0]);
 let model = new CarModel(myColor, 'MyCar', picked);
@@ -122,6 +133,10 @@ const voteMenu = new VoteMenu((pick) => voteRemote.FireServer(pick));
 const vehiclePanel = new VehiclePanel((vehicle) => {
   picked = vehicle;
   chooseVehicleRemote.FireServer(vehicle);
+});
+profileRemote.OnClientEvent.Connect((message: ProfileMessage) => {
+  profile = message;
+  picked = message.vehicle;
 });
 camera.snapTo(car);
 
@@ -265,6 +280,6 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
   hud.update(state, myIndex, now, def.name, recordsPanel.chaseLine(def.id), recordsPanel.newBestLine(def.id));
   recordsPanel.update(state, def.name);
   voteMenu.update(state);
-  vehiclePanel.update(state, picked);
+  vehiclePanel.update(state, picked, profile?.unlocked ?? [DEFAULT_VEHICLE], profile?.available ?? true);
   netReadout?.update(frameDt, state);
 });

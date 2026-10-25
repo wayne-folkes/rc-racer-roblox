@@ -8,13 +8,17 @@ import {
   REMOTE,
   SEND_RATE,
   type Phase,
+  type ProfileMessage,
   type RaceStateMessage,
   type RecordsMessage,
 } from 'shared/protocol';
 import { fastestPossible, NO_TIME, type RecordKind } from 'shared/records';
+import { newProfile, withRace, withVehicle, type CupRecord, type Profile } from 'shared/profile';
 import type { TrackPath } from 'shared/trackPath';
 import { trackById, TRACKS, trackPath, type CircuitId, type TrackDef } from 'shared/tracks';
+import { isUnlocked, unlockedVehicles } from 'shared/unlocks';
 import { DEFAULT_VEHICLE, isVehicleId, VEHICLE_IDS, VEHICLES, type VehicleId } from 'shared/vehicles';
+import { ProfileBook } from './profile';
 import { RecordBook } from './records';
 
 // Runs the races. Players vote between the four cups and two quick races; a cup is four races with
@@ -79,6 +83,9 @@ recordsRemote.Parent = net;
 const chooseVehicleRemote = new Instance('RemoteEvent');
 chooseVehicleRemote.Name = REMOTE.chooseVehicle;
 chooseVehicleRemote.Parent = net;
+const profileRemote = new Instance('RemoteEvent');
+profileRemote.Name = REMOTE.profile;
+profileRemote.Parent = net;
 net.Parent = ReplicatedStorage;
 
 const now = () => game.Workspace.GetServerTimeNow();
@@ -121,12 +128,36 @@ let sinceWorstFrame = 0;
 const WORST_FRAME_WINDOW = 5;
 
 const records = new RecordBook();
+const profiles = new ProfileBook();
 /** Racer indices whose times from this race have been handed to the records. */
 const recorded = new Set<number>();
 /** Players who beat their own best on the current track, and with what. */
 const newBests = new Map<number, Set<RecordKind>>();
 /** Each player's vehicle pick by user id. It applies from the next race start. */
 const vehiclePicks = new Map<number, VehicleId>();
+
+/** Sends a player their profile: their pick, what they can pick, and their trophies. */
+function sendProfile(player: Player, news: string[] = []) {
+  const userId = player.UserId;
+  const profile: Profile = profiles.get(userId) ?? newProfile();
+  const trophies: Record<string, number> = {};
+  for (const [circuit, cup] of profile.cups as unknown as Map<string, CupRecord>) trophies[circuit] = cup.best;
+  const message: ProfileMessage = {
+    available: profiles.available && profiles.loaded(userId),
+    vehicle: vehiclePicks.get(userId) ?? (isUnlocked(profile, profile.vehicle) ? profile.vehicle : DEFAULT_VEHICLE),
+    unlocked: unlockedVehicles(profile),
+    trophies,
+    rivalWins: profile.rivalWins,
+    news,
+  };
+  profileRemote.FireClient(player, message);
+}
+
+/** The vehicle a player races: their pick, if their profile unlocks it. */
+function raceVehicle(userId: number): VehicleId {
+  const pick = vehiclePicks.get(userId);
+  return pick !== undefined && isUnlocked(profiles.get(userId) ?? newProfile(), pick) ? pick : DEFAULT_VEHICLE;
+}
 
 /** Sends a player the current track's records and their own bests on it. */
 function sendRecords(player: Player) {
@@ -295,7 +326,10 @@ function startRace() {
   const entrants: Entrant[] = [];
   for (const p of joined) {
     if (entrants.size() < GRID_SIZE) {
-      entrants.push({ name: p.DisplayName, userId: p.UserId, vehicle: vehiclePicks.get(p.UserId) ?? DEFAULT_VEHICLE });
+      const vehicle = raceVehicle(p.UserId);
+      entrants.push({ name: p.DisplayName, userId: p.UserId, vehicle });
+      // A changed pick is saved once, now, so the next visit remembers it.
+      if (profiles.get(p.UserId)?.vehicle !== vehicle) task.spawn(() => profiles.update(p.UserId, (c) => withVehicle(c, vehicle)));
     }
   }
   raceId++;
@@ -326,6 +360,13 @@ function finishRace(s: RaceSim) {
   s.racers.forEach((r, i) => {
     if (r.userId !== 0) recordTimes(s, i);
   });
+  // A player who finished scores the race, and a win if they're first overall (AI cars included).
+  const standings = s.race.standings();
+  s.racers.forEach((r, i) => {
+    if (r.userId === 0 || s.race.finishTimes[i] === NOT_FINISHED) return;
+    const won = standings[0] === i;
+    task.spawn(() => profiles.update(r.userId, (p) => withRace(p, won)));
+  });
   let seconds = RESULTS_SECONDS;
   if (mode?.kind === 'cup') {
     mode.cup.addRace(s.race.standings().map((i) => scorers[i]));
@@ -355,6 +396,12 @@ function addPlayer(player: Player) {
   if (phase === 'waiting') startVote(FIRST_VOTE_SECONDS);
   else broadcastState();
   task.spawn(() => {
+    profiles.load(player);
+    if (!player.IsDescendantOf(Players)) return;
+    // The vehicle they picked last time, if they can still pick it.
+    const saved = profiles.get(player.UserId);
+    if (saved && isUnlocked(saved, saved.vehicle)) vehiclePicks.set(player.UserId, saved.vehicle);
+    sendProfile(player);
     records.load(player);
     sendRecords(player);
   });
@@ -367,6 +414,7 @@ Players.PlayerRemoving.Connect((player) => {
   const i = joined.indexOf(player);
   if (i >= 0) joined.remove(i);
   records.forget(player.UserId);
+  profiles.forget(player.UserId);
   if (sim) {
     const index = sim.indexOf(player.UserId);
     if (index >= 0) sim.standIn(index);
@@ -388,7 +436,10 @@ voteRemote.OnServerEvent.Connect((player, pick) => {
 });
 
 chooseVehicleRemote.OnServerEvent.Connect((player, vehicle) => {
-  if (isVehicleId(vehicle)) vehiclePicks.set(player.UserId, vehicle);
+  const profile = profiles.get(player.UserId) ?? newProfile();
+  if (isVehicleId(vehicle) && isUnlocked(profile, vehicle)) vehiclePicks.set(player.UserId, vehicle);
+  // Sent back either way, so the device learns the pick the server really has.
+  sendProfile(player);
 });
 
 const isNumber = (v: unknown): v is number => typeIs(v, 'number') && v === v;

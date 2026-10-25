@@ -1,5 +1,6 @@
 import type { RecordRow } from 'shared/protocol';
 import { LEADERBOARD_SIZE, placeInTop, toMs, withBest, type PersonalBests, type RecordKind, type TrackBests } from 'shared/records';
+import { attempt } from './attempt';
 
 // Best times in Roblox's data stores. Each player's own bests are one entry ("player_<userId>") in
 // a data store; each track's top 10 for a kind of time is an ordered data store, scoped by track id,
@@ -14,25 +15,11 @@ const RunService = game.GetService('RunService');
 const SUFFIX = RunService.IsStudio() ? '_studio' : '';
 /** A track's top 10 is read again after this long (s), to pick up other servers' times. */
 const BOARD_TTL = 60;
-/** Tries at a data store call before giving up; Roblox asks for a short wait between tries. */
-const TRIES = 3;
-const RETRY_WAIT = 1;
 
 interface Board {
   race: RecordRow[];
   lap: RecordRow[];
   readAt: number;
-}
-
-/** Calls `f`, trying again a couple of times if the data store fails. */
-function attempt<T>(what: string, f: () => T): T | undefined {
-  for (let n = 1; n <= TRIES; n++) {
-    const [ok, result] = pcall(f);
-    if (ok) return result;
-    if (n === TRIES) warn(`[records] ${what} failed: ${result}`);
-    else task.wait(RETRY_WAIT);
-  }
-  return undefined;
 }
 
 const isTime = (v: unknown): v is number => typeIs(v, 'number') && v > 0 && v === v;
