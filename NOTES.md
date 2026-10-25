@@ -52,6 +52,7 @@ allow links off the platform. Edit `design/icon.html` or `design/thumbnail.html`
 | Cups, votes, other tracks, scenery and weather in Studio | ⏳ not yet checked |
 | Multiplayer in Studio | ✅ (2026-10-23) a 2-player test races the AI and bumps feel right, after drawing other cars where they really are rather than easing behind them |
 | Other cars on a real phone | ✅ (2026-10-24) smooth on the published place, after carrying cars round the track through the phone's 0.68 s gaps in snapshots on home wifi |
+| Best times | ✅ in Node: bests only improve, the top 10 keeps one line per player and goes to whoever set a tie first. ✅ in Studio (2026-10-24): times save to and load from the data stores, a rejoining player gets their bests and the top 10, and a 3-lap race saved its race time and best lap on finishing |
 | Multiplayer on real phones | ✅ (2026-10-24) three iPhones raced a Space Cup together over 5G on a train and it played well: 60 fps, 37 ms ping, snapshots at 20/s with the longest arrival gap 0.13 s. Home wifi was worse than 5G (69 ms ping, gaps up to 0.68 s) |
 | Opens in Studio and drives round Meadow Loop | ✅ (2026-10-23) the track builds with no gaps on the bends, the car drives round it, and the camera matches the web game's view |
 
@@ -146,6 +147,16 @@ Friends in the same server race each other, with AI cars filling the grid.
   the place version, frame rate, ping, snapshots a second, the longest gaps between snapshots (by
   when they were sent and when they arrived) and the server's longest frame. Stalls over 0.4 s are
   printed, so they show in the Developer Console (`/console` in chat).
+- **Best times** (`shared/records.ts`, `server/records.ts`, `client/recordsPanel.ts`): each player's
+  best race and best lap on every track, each way round, and a top 10 of each per track, kept in
+  Roblox data stores. A player's times are saved as they cross the line (their best lap is kept if
+  time runs out first); only an improvement is written, and every write keeps the lower of the
+  stored and new times, so two servers can't undo each other. Times quicker than the whole distance
+  at the server's speed limit (1.6× top speed) are dropped. The top 10 is re-read at most once a
+  minute. Studio uses its own stores (names ending `_studio`) and needs Game Settings → Security →
+  Enable Studio Access to API Services; without it, best times turn off with one warning. Players
+  see the records panel in the lobby and countdown, the lap record and their best lap (`REC · PB`)
+  while racing, and "New best…" when they finish.
 - **Bumps:** each device moves only its own car, and the server moves only AI cars. When a player
   bumps an AI car, the server pushes the AI car and the player's device pushes the player's car; two
   players' devices each push their own. With lag a bump can feel a little one-sided, which is

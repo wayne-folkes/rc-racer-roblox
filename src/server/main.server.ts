@@ -1,7 +1,7 @@
 import { DEFAULT_TUNING } from 'shared/carPhysics';
 import { countVotes, Cup, voteOptions, winningOption, type Scorer, type VoteOption } from 'shared/cup';
 import { GRID_SIZE } from 'shared/grid';
-import { COUNTDOWN_SECONDS, TOTAL_LAPS } from 'shared/race';
+import { COUNTDOWN_SECONDS, NOT_FINISHED, TOTAL_LAPS } from 'shared/race';
 import { RaceSim, type Entrant } from 'shared/raceSim';
 import {
   MAX_REPORT_AGE,
@@ -10,9 +10,12 @@ import {
   SEND_RATE,
   type Phase,
   type RaceStateMessage,
+  type RecordsMessage,
 } from 'shared/protocol';
+import { fastestPossible, NO_TIME, type RecordKind } from 'shared/records';
 import type { TrackPath } from 'shared/trackPath';
 import { trackById, TRACKS, trackPath, type CircuitId, type TrackDef } from 'shared/tracks';
+import { RecordBook } from './records';
 
 // Runs the races. Players vote between the two cups and two quick races; a cup is four races with
 // points for every place (shared/cup.ts), a quick race is one. Each race has AI filling the grid
@@ -68,6 +71,9 @@ useItemRemote.Parent = net;
 const itemEventsRemote = new Instance('RemoteEvent');
 itemEventsRemote.Name = REMOTE.itemEvents;
 itemEventsRemote.Parent = net;
+const recordsRemote = new Instance('RemoteEvent');
+recordsRemote.Name = REMOTE.records;
+recordsRemote.Parent = net;
 net.Parent = ReplicatedStorage;
 
 const now = () => game.Workspace.GetServerTimeNow();
@@ -108,6 +114,78 @@ let worstFrame = 0;
 let previousWorstFrame = 0;
 let sinceWorstFrame = 0;
 const WORST_FRAME_WINDOW = 5;
+
+const records = new RecordBook();
+/** Racer indices whose times from this race have been handed to the records. */
+const recorded = new Set<number>();
+/** Players who beat their own best on the current track, and with what. */
+const newBests = new Map<number, Set<RecordKind>>();
+
+/** Sends a player the current track's records and their own bests on it. */
+function sendRecords(player: Player) {
+  const trackId = track.id;
+  task.spawn(() => {
+    const board = records.board(trackId);
+    // The track may have changed while the board was read; the next send covers the new one.
+    if (track.id !== trackId || !player.IsDescendantOf(Players)) return;
+    const mine = newBests.get(player.UserId);
+    const message: RecordsMessage = {
+      trackId,
+      available: records.available,
+      race: board.race,
+      lap: board.lap,
+      myRace: records.best(player.UserId, trackId, 'race') ?? NO_TIME,
+      myLap: records.best(player.UserId, trackId, 'lap') ?? NO_TIME,
+      newRace: mine?.has('race') ?? false,
+      newLap: mine?.has('lap') ?? false,
+    };
+    recordsRemote.FireClient(player, message);
+  });
+}
+
+function sendRecordsToAll() {
+  for (const p of joined) sendRecords(p);
+}
+
+/** The track changes: everyone gets its records, and last track's new bests are done with. */
+function trackChanged() {
+  newBests.clear();
+  sendRecordsToAll();
+}
+
+/**
+ * Hands a player's times from this race to the records: the race time if they finished, and their best
+ * lap. Times quicker than the car could possibly go are dropped.
+ */
+function recordTimes(s: RaceSim, index: number) {
+  if (recorded.has(index)) return;
+  recorded.add(index);
+  const racer = s.racers[index];
+  const player = Players.GetPlayerByUserId(racer.userId);
+  if (!player) return;
+  const finish = s.race.finishTimes[index];
+  const times: [RecordKind, number | undefined][] = [
+    ['race', finish !== NOT_FINISHED ? finish : undefined],
+    ['lap', s.race.racers[index].bestLap()],
+  ];
+  const trackId = track.id;
+  const length = s.track.length;
+  task.spawn(() => {
+    let improved = false;
+    for (const [kind, time] of times) {
+      const laps = kind === 'race' ? s.race.totalLaps : 1;
+      if (time === undefined || time < fastestPossible(length, laps, MAX_REPORTED_SPEED)) continue;
+      if (!records.submit(player, trackId, kind, time)) continue;
+      improved = true;
+      if (track.id !== trackId) continue;
+      const kinds = newBests.get(player.UserId) ?? new Set<RecordKind>();
+      kinds.add(kind);
+      newBests.set(player.UserId, kinds);
+    }
+    // A new best may have changed the top 10, which everyone sees.
+    if (improved) sendRecordsToAll();
+  });
+}
 
 function stateMessage(): RaceStateMessage {
   return {
@@ -212,8 +290,10 @@ function startRace() {
     userId: r.userId,
   }));
   lastReport.clear();
+  recorded.clear();
   goAt = now() + COUNTDOWN_SECONDS;
   enterPhase('countdown', COUNTDOWN_SECONDS);
+  trackChanged();
 }
 
 function raceOver(s: RaceSim): boolean {
@@ -224,6 +304,10 @@ function raceOver(s: RaceSim): boolean {
 
 /** The race is over: score it if it's part of a cup, and show the results. */
 function finishRace(s: RaceSim) {
+  // Players still out on track when time ran out keep their best lap.
+  s.racers.forEach((r, i) => {
+    if (r.userId !== 0) recordTimes(s, i);
+  });
   let seconds = RESULTS_SECONDS;
   if (mode?.kind === 'cup') {
     mode.cup.addRace(s.race.standings().map((i) => scorers[i]));
@@ -242,6 +326,7 @@ function afterResults() {
   } else if (mode?.kind === 'cup' && !mode.cup.done()) {
     track = mode.cup.nextTrack()!;
     enterPhase('lobby', LOBBY_SECONDS);
+    trackChanged();
   } else {
     startVote(VOTE_SECONDS);
   }
@@ -251,6 +336,10 @@ function addPlayer(player: Player) {
   joined.push(player);
   if (phase === 'waiting') startVote(FIRST_VOTE_SECONDS);
   else broadcastState();
+  task.spawn(() => {
+    records.load(player);
+    sendRecords(player);
+  });
 }
 
 Players.PlayerAdded.Connect(addPlayer);
@@ -259,6 +348,7 @@ for (const p of Players.GetPlayers()) addPlayer(p);
 Players.PlayerRemoving.Connect((player) => {
   const i = joined.indexOf(player);
   if (i >= 0) joined.remove(i);
+  records.forget(player.UserId);
   if (sim) {
     const index = sim.indexOf(player.UserId);
     if (index >= 0) sim.standIn(index);
@@ -335,6 +425,12 @@ RunService.Heartbeat.Connect((dt) => {
       itemEventsRemote.FireAllClients(events);
       broadcastState();
     }
+
+    // A player's times go to the records as they cross the line, so leaving straight after keeps them.
+    const s = sim;
+    s.racers.forEach((r, i) => {
+      if (r.userId !== 0 && s.race.finishTimes[i] !== NOT_FINISHED) recordTimes(s, i);
+    });
 
     if (phase === 'countdown' && sim.race.phase !== 'countdown') enterPhase('racing');
     else if (phase === 'racing' && raceOver(sim)) finishRace(sim);

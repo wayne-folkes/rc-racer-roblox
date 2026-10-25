@@ -10,6 +10,8 @@
 //   server → all     RaceState  (reliable, 4 Hz, on every phase change and after item events):
 //                               RaceStateMessage
 //   server → all     ItemEvents (reliable, as they happen): ItemEvent[] (from items.ts)
+//   server → player  Records    (reliable, when the track changes, on joining, and after a new best):
+//                               RecordsMessage, with that player's own bests
 
 export const NET_FOLDER = 'Net';
 export const REMOTE = {
@@ -19,6 +21,7 @@ export const REMOTE = {
   useItem: 'UseItem',
   vote: 'Vote',
   itemEvents: 'ItemEvents',
+  records: 'Records',
 } as const;
 
 
@@ -102,4 +105,26 @@ export interface RaceStateMessage {
   cupFinal: boolean;
   /** The server's longest frame (s) over the last few seconds, for the owner's network readout. */
   serverWorstFrame: number;
+}
+
+/** A line of a track's top 10. */
+export interface RecordRow {
+  name: string;
+  userId: number;
+  /** Seconds. */
+  time: number;
+}
+
+/** A track's best times, and the player's own, in seconds (NO_TIME in records.ts for none). */
+export interface RecordsMessage {
+  trackId: string;
+  /** False if the records couldn't be loaded (or, in Studio, API access is off). */
+  available: boolean;
+  race: RecordRow[];
+  lap: RecordRow[];
+  myRace: number;
+  myLap: number;
+  /** Set when the player has just beaten their own best on this track. */
+  newRace: boolean;
+  newLap: boolean;
 }
