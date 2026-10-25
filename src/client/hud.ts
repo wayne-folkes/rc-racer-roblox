@@ -2,12 +2,16 @@ import type { RaceStateMessage } from 'shared/protocol';
 import { formatTime } from 'shared/race';
 
 // The race on screen: what's being raced and where, the vote and lobby timers, 3-2-1, lap, position
-// and time while racing, and the results with the cup standings.
+// and time while racing, and the results with the cup standings and what a cup just earned.
 
 const Players = game.GetService('Players');
 
 /** How long GO! stays up after the start. */
 const GO_SECONDS = 1;
+/** The medal for each trophy value (shared/profile.ts): 0 none, 1 bronze, 2 silver, 3 gold. */
+const MEDALS = ['', '🥉', '🥈', '🥇'];
+/** The news after a cup, in gold (the vote menu's picked colour). */
+const NEWS_COLOR = Color3.fromHex('#e6a417');
 
 const ordinal = (n: number) => {
   const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th';
@@ -41,6 +45,8 @@ export class Hud {
   private readonly results: Frame;
   private readonly resultLines: TextLabel;
   private readonly cupLines: TextLabel;
+  /** What a cup just earned, under the results, on a cup's final results only. */
+  private readonly newsLine: TextLabel;
 
   constructor() {
     const gui = new Instance('ScreenGui');
@@ -80,6 +86,11 @@ export class Hud {
     this.cupLines.Font = Enum.Font.GothamBold;
     this.cupLines.LineHeight = 1.25;
     this.results.Parent = gui;
+    // Centred under the results frame, which is 250 studs tall and centred at 55% of the screen.
+    this.newsLine = label(gui, 20, new UDim2(0.5, 0, 0.55, 133), new Vector2(0.5, 0));
+    this.newsLine.Font = Enum.Font.GothamBold;
+    this.newsLine.TextColor3 = NEWS_COLOR;
+    this.newsLine.Visible = false;
 
     gui.Parent = Players.LocalPlayer.WaitForChild('PlayerGui');
   }
@@ -87,6 +98,7 @@ export class Hud {
   /**
    * @param chase The lap record and our best lap, shown while racing.
    * @param newBest What we just beat on this track, shown once we've finished.
+   * @param news What we just earned in the cup, shown under the results after its last race.
    */
   update(
     state: RaceStateMessage | undefined,
@@ -95,12 +107,14 @@ export class Hud {
     trackName: string,
     chase: string,
     newBest: string,
+    news: string[],
   ): void {
     let banner = '';
     let subtitle = '';
     let info = '';
     let chaseLine = '';
     let showResults = false;
+    let showNews = false;
     const secondsLeft = state ? math.max(0, math.ceil(state.phaseEndsAt - serverNow)) : 0;
     const inRace = myIndex >= 0;
     const others = state ? state.playerCount - 1 : 0;
@@ -157,9 +171,13 @@ export class Hud {
           state.cup
             .map((r, place) => {
               const you = r.userId !== 0 && r.userId === Players.LocalPlayer.UserId ? '  ← you' : '';
-              return `${place + 1}. ${r.name}  ${r.points}${r.lastPoints > 0 ? ` (+${r.lastPoints})` : ''}${you}`;
+              // Trophies and the Rival tag only show on a cup's final results.
+              const medal = state.cupFinal && r.trophy > 0 ? ` ${MEDALS[r.trophy]}` : '';
+              const rival = state.cupFinal && r.rival ? '  · Rival' : '';
+              return `${place + 1}. ${r.name}${medal}${rival}  ${r.points}${r.lastPoints > 0 ? ` (+${r.lastPoints})` : ''}${you}`;
             })
             .join('\n');
+        showNews = state.cupFinal && news.size() > 0;
         this.resultLines.Text =
           'RACE\n' +
           state.standings
@@ -178,5 +196,7 @@ export class Hud {
     this.info.Text = info;
     this.chase.Text = chaseLine;
     this.results.Visible = showResults;
+    this.newsLine.Text = showNews ? news.join('  ·  ') : '';
+    this.newsLine.Visible = showNews;
   }
 }

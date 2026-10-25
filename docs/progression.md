@@ -197,7 +197,7 @@ when they pick a different vehicle.
 
 | Message | Direction | When | Contents |
 |---|---|---|---|
-| `RaceState` | server → all | As now | `RacerView` gains `vehicle` |
+| `RaceState` | server → all | As now | `RacerView` gains `vehicle`; `StandingView` gains `trophy` and `rival` for a finished cup; `voteCups` gives each vote option's circuit id, for the medals in the vote menu |
 | `Profile` (new) | server → player, reliable | After loading on join, after a cup's awards, after a vehicle pick | `ProfileMessage`, below |
 | `ChooseVehicle` (new) | player → server, reliable | The player picks a vehicle | A `VehicleId` |
 | `Unlocked` (new) | server → all, reliable | Someone unlocks a vehicle | Their display name and the vehicle's name, for the chat line |
@@ -248,7 +248,8 @@ saved and applies at the next race start.
 **In Studio**
 
 - A Studio-only `CupLaps` attribute on `Workspace` shortens every race to that many laps, so a whole
-  cup takes about two minutes. It's ignored on a live server.
+  cup takes about two minutes. A Studio-only `Autopilot` attribute lets the AI drive the player's
+  car, so a cup can be played hands-free. Both are ignored on a live server.
 - Multi-client test with 2 players: finish a Classic Cup on the podium and see the trophy, Rival tag
   and unlock on the results. Pick the truck in the lobby, and check the other window draws a truck
   and the truck handles differently on oil.

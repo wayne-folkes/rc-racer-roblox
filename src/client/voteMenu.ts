@@ -3,6 +3,7 @@ import { CIRCUIT_IDS } from 'shared/tracks';
 
 // The vote between races: a button per choice (the four cups and two quick races) with the votes so
 // far. The cups sit two to a row, the quick races a row each, all below the HUD's countdown banner.
+// A cup shows the player's best trophy in it so far, as a medal.
 // Click or tap a button, press 1–6, or move to it with a gamepad and press A. The car can still
 // be driven around while the vote is on, except with a gamepad, whose buttons work the menu.
 
@@ -28,6 +29,8 @@ const BUTTON_GAP = 6;
 const BELOW_BANNER = 76;
 const BUTTON_COLOR = new Color3(0.1, 0.11, 0.15);
 const PICKED_COLOR = Color3.fromHex('#e6a417');
+/** The medal for each trophy value (shared/profile.ts): 0 none, 1 bronze, 2 silver, 3 gold. */
+const MEDALS = ['', '🥉', '🥈', '🥇'];
 
 const isGamepad = (t: Enum.UserInputType) => t.Name.sub(1, 7) === 'Gamepad';
 
@@ -94,7 +97,8 @@ export class VoteMenu {
     this.send(i);
   }
 
-  update(state: RaceStateMessage | undefined): void {
+  /** @param trophies The player's best trophy per circuit id, for the medals on the cups. */
+  update(state: RaceStateMessage | undefined, trophies: Record<string, number>): void {
     const voting = state !== undefined && state.phase === 'vote' && state.voteOptions.size() > 0;
     if (!voting) {
       if (this.frame.Visible) {
@@ -116,8 +120,11 @@ export class VoteMenu {
       button.Visible = label !== undefined;
       if (label === undefined) return;
       const votes = state.voteCounts[i] ?? 0;
+      // A quick race has no circuit, so no trophy (its id is '').
+      const trophy = trophies[state.voteCups[i] ?? ''] ?? 0;
+      const medal = trophy > 0 ? ` ${MEDALS[trophy]}` : '';
       const key = UserInputService.TouchEnabled ? '' : `${i + 1}  `;
-      button.Text = `${key}${label}${votes > 0 ? `   · ${votes} vote${votes === 1 ? '' : 's'}` : ''}`;
+      button.Text = `${key}${label}${medal}${votes > 0 ? `   · ${votes} vote${votes === 1 ? '' : 's'}` : ''}`;
       button.BackgroundColor3 = i === this.pick ? PICKED_COLOR : BUTTON_COLOR;
     });
   }

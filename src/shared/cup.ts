@@ -1,4 +1,5 @@
 import { ALL_TRACKS, CIRCUITS, CIRCUIT_IDS, circuitTracks, type CircuitId, type TrackDef } from './tracks';
+import { BRONZE, GOLD, NO_TROPHY, SILVER } from './profile';
 
 // What a server races: a cup (four races on one circuit, points for every place) or a quick single
 // race, chosen by a vote between races. Pure rules, so the server runs them and tests can play them.
@@ -65,6 +66,8 @@ export interface CupStanding extends Scorer {
   bestFinish: number;
   /** Points from the latest race. */
   lastPoints: number;
+  /** Races scored for this scorer: fewer than the cup's races if they joined late or left early. */
+  races: number;
 }
 
 export class Cup {
@@ -95,12 +98,13 @@ export class Cup {
     for (const [, row] of this.table) row.lastPoints = 0;
     finishers.forEach((f, place) => {
       const points = CUP_POINTS[place] ?? 0;
-      const row = this.table.get(f.key) ?? { ...f, points: 0, bestFinish: math.huge, lastPoints: 0 };
+      const row = this.table.get(f.key) ?? { ...f, points: 0, bestFinish: math.huge, lastPoints: 0, races: 0 };
       row.name = f.name;
       row.color = f.color;
       row.userId = f.userId;
       row.points += points;
       row.lastPoints = points;
+      row.races++;
       row.bestFinish = math.min(row.bestFinish, place + 1);
       this.table.set(f.key, row);
     });
@@ -118,4 +122,58 @@ export class Cup {
     });
     return rows;
   }
+}
+
+/** What a player earned in a finished cup. */
+export interface CupAward {
+  userId: number;
+  /** Overall place, 1st = 1, AI cars included. */
+  place: number;
+  /** NO_TROPHY, or BRONZE / SILVER / GOLD for 3rd / 2nd / 1st (shared/profile.ts). */
+  trophy: number;
+  /** Best-placed of two or more rivals: players who raced at least half the cup's races. */
+  rival: boolean;
+}
+
+const TROPHY_BY_PLACE = [GOLD, SILVER, BRONZE];
+
+/**
+ * Awards for every player (not AI) in a finished cup's final standings, leader first.
+ *
+ * The trophy comes from the overall place, AI cars included, and there's no minimum number of races
+ * for one: AI cars score in every race, so someone who joined late has no points for the races they
+ * missed and is very unlikely to reach the top 3. A Rival win needs at least half the races, so a friend
+ * who drops in for the last race doesn't turn a solo cup into one.
+ */
+export function cupAwards(standings: CupStanding[], totalRaces: number): CupAward[] {
+  const rivals = standings.filter((r) => r.userId !== 0 && r.races * 2 >= totalRaces);
+  // Only the best-placed of two or more rivals gets the Rival win. A solo cup has no rival to beat.
+  const rivalWinner = rivals.size() >= 2 ? rivals[0].userId : -1;
+  const awards: CupAward[] = [];
+  standings.forEach((row, i) => {
+    if (row.userId === 0) return;
+    awards.push({
+      userId: row.userId,
+      place: i + 1,
+      trophy: TROPHY_BY_PLACE[i] ?? NO_TROPHY,
+      rival: row.userId === rivalWinner,
+    });
+  });
+  return awards;
+}
+
+/**
+ * The results news a player is shown after a cup: the trophy, a Rival win, each vehicle just unlocked,
+ * and a warning if their progress couldn't be saved (in which case nothing was unlocked).
+ */
+export function awardNews(award: CupAward | undefined, cupName: string, unlocked: string[], saved: boolean): string[] {
+  const news: string[] = [];
+  if (award !== undefined && award.trophy !== NO_TROPHY) {
+    const word = award.trophy === GOLD ? 'Gold' : award.trophy === SILVER ? 'Silver' : 'Bronze';
+    news.push(`${word} in the ${cupName}`);
+  }
+  if (award?.rival) news.push('Rival win! Top player in the cup');
+  for (const name of unlocked) news.push(`Unlocked: ${name}`);
+  if (award !== undefined && !saved) news.push("Progress couldn't be saved");
+  return news;
 }

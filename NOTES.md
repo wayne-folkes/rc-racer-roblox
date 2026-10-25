@@ -55,7 +55,7 @@ allow links off the platform. Edit `design/icon.html` or `design/thumbnail.html`
 | Best times | ✅ in Node: bests only improve, the top 10 keeps one line per player and goes to whoever set a tie first. ✅ in Studio (2026-10-24): times save to and load from the data stores, a rejoining player gets their bests and the top 10, and a 3-lap race saved its race time and best lap on finishing |
 | Multiplayer on real phones | ✅ (2026-10-24) three iPhones raced a Space Cup together over 5G on a train and it played well: 60 fps, 37 ms ping, snapshots at 20/s with the longest arrival gap 0.13 s. Home wifi was worse than 5G (69 ms ping, gaps up to 0.68 s) |
 | Opens in Studio and drives round Meadow Loop | ✅ (2026-10-23) the track builds with no gaps on the bends, the car drives round it, and the camera matches the web game's view |
-| Vehicles in Studio | Partly (2026-10-24, one player): the panel shows during the vote above the controls hint, with each car turning in its card. A new profile sees the truck as a silhouette with "???" and its hint, and can't pick it. With a Classic Cup bronze in `Profiles_studio` the truck unlocks; picking it (V) saves it when the race starts, and a restart remembers it. The truck drives, picks up items and reports at 20/s. Still to check: races and wins saving at a race's end, another player seeing the truck, a stand-in driving one, and the panel on a phone |
+| Vehicles in Studio | Partly (2026-10-24, one player): the panel shows during the vote above the controls hint, with each car turning in its card. A new profile sees the truck as a silhouette with "???" and its hint, and can't pick it. With a Classic Cup bronze in `Profiles_studio` the truck unlocks; picking it (V) saves it when the race starts, and a restart remembers it. The truck drives, picks up items and reports at 20/s. A Classic Cup of 1-lap races driven by `Autopilot`, from a profile with no trophies, ended 2nd overall: the final standings showed 🥈 beside the player, the news under them read "Silver in the Classic Cup · Unlocked: Monster Truck", and the store held the silver, the cup, 4 more races and a race win. Still to check: the unlock line in the chat window (sent, not seen, as Studio's screen capture leaves chat out), a Rival win, another player seeing the truck, a stand-in driving one, and the panel on a phone |
 
 Controls feel good with keyboard, gamepad and touch (Studio's device emulator, one finger at a time),
 and the view works on phone and console screens. Still to check: frame rate (Shift+F5 in Studio),
@@ -130,6 +130,14 @@ Friends in the same server race each other, with AI cars filling the grid.
   for 10 seconds, 15 after a cup's last race. Once the first player finishes, the rest have 30
   seconds. Between races you can drive anywhere; anyone who joins mid-race watches the leader and
   joins a cup with no points. Vote by clicking or tapping, with 1–6, or with a gamepad's D-pad and A.
+  A cup's final results give each player a trophy from their overall place (gold, silver or bronze for
+  1st to 3rd, AI cars included), and a Rival win to the best placed of two or more players who raced at
+  least half the cup. Each player sees what they earned under the results ("Gold in the Classic Cup",
+  "Rival win!", "Unlocked: Monster Truck"), the vote shows each cup's best trophy as a medal, and the
+  unlock is announced in chat to everyone. For testing in Studio, the Workspace attributes `CupLaps` (a
+  number, 1 or more, for races of that many laps) and `Autopilot` (true, so the AI drives your car) can be
+  set from the command bar in a play session, e.g. `workspace:SetAttribute("CupLaps", 1)`. Both are
+  ignored on a live server.
 - **Tracks** (`shared/tracks.ts`, `shared/spaceTracks.ts`, `shared/toyboxTracks.ts`,
   `shared/cityTracks.ts`): all 16 of the web's tracks, each either way round, ported with their item
   layouts and themes. The Toybox and City cups (2026-10-24) were designed in the web game first and
@@ -172,8 +180,10 @@ Friends in the same server race each other, with AI cars filling the grid.
   (`player_<userId>`), holding the vehicle picked, race and race-win counts, and each cup's trophies.
   It's loaded when a player joins and saved when a race ends (`races`, and `raceWins` for a win) and
   when a vehicle pick changes; each save is an `UpdateAsync` that applies the change to whatever is
-  stored, so two servers can't undo each other. Studio uses `Profiles_studio` and needs API access
-  on, as the best times do; without it, the player gets the buggy only, with a note in the panel.
+  stored, so two servers can't undo each other. A race's changes for each player (their race, a win,
+  and a cup's trophy and Rival win if the race ended a cup) go out as one save. Studio uses
+  `Profiles_studio` and needs API access on, as the best times do; without it, the player gets the
+  buggy only, with a note in the panel.
 - **Bumps:** each device moves only its own car, and the server moves only AI cars. When a player
   bumps an AI car, the server pushes the AI car and the player's device pushes the player's car; two
   players' devices each push their own. With lag a bump can feel a little one-sided, which is

@@ -14,6 +14,7 @@ import type { VehicleId } from './vehicles';
 //   server → all     RaceState  (reliable, 4 Hz, on every phase change and after item events):
 //                               RaceStateMessage
 //   server → all     ItemEvents (reliable, as they happen): ItemEvent[] (from items.ts)
+//   server → all     Unlocked   (reliable, when a player unlocks a vehicle): UnlockedMessage, for the chat line
 //   server → player  Records    (reliable, when the track changes, on joining, and after a new best):
 //                               RecordsMessage, with that player's own bests
 //   server → player  Profile    (reliable, on joining, after a vehicle pick, and after a cup): ProfileMessage
@@ -29,6 +30,7 @@ export const REMOTE = {
   itemEvents: 'ItemEvents',
   records: 'Records',
   profile: 'Profile',
+  unlocked: 'Unlocked',
 } as const;
 
 /** How often cars are reported, each way. */
@@ -61,6 +63,10 @@ export interface StandingView {
   lastPoints: number;
   /** 0 for an AI car. */
   userId: number;
+  /** The trophy won in the cup, on the results after its last race (NO_TROPHY otherwise). */
+  trophy: number;
+  /** The Rival win, on the results after the cup's last race. */
+  rival: boolean;
 }
 
 export interface RacerView {
@@ -109,6 +115,8 @@ export interface RaceStateMessage {
   voteCounts: number[];
   /** The cup standings, leader first; empty for a quick race. */
   cup: StandingView[];
+  /** In a vote: each choice's circuit id for a cup, or '' for a quick race, parallel to voteOptions. */
+  voteCups: string[];
   /** True on the results after a cup's last race. */
   cupFinal: boolean;
   /** The server's longest frame (s) over the last few seconds, for the owner's network readout. */
@@ -137,7 +145,7 @@ export interface RecordsMessage {
   newLap: boolean;
 }
 
-/** A player's progress, for the vehicle panel (and, from step 4, the vote menu and results). */
+/** A player's progress, for the vehicle panel, the vote menu and the results. */
 export interface ProfileMessage {
   /** False if the profile couldn't be loaded: the buggy only, and progress may not be saved. */
   available: boolean;
@@ -148,6 +156,14 @@ export interface ProfileMessage {
   /** Best trophy per circuit id. */
   trophies: Record<string, number>;
   rivalWins: number;
-  /** What was just earned, for the results screen; empty except on the send after a cup (step 4). */
+  /** What was just earned, for the results screen; empty except on the send after a cup. */
   news: string[];
+}
+
+/** Someone unlocked a vehicle: everyone sees it in chat. */
+export interface UnlockedMessage {
+  /** The player's display name. */
+  name: string;
+  /** The vehicle's name, e.g. 'Monster Truck'. */
+  vehicle: string;
 }

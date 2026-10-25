@@ -1,4 +1,5 @@
-import { createCar, type CarState } from 'shared/carPhysics';
+import { AiDriver } from 'shared/aiDriver';
+import { type CarInput, type CarState, createCar, DEFAULT_TUNING } from 'shared/carPhysics';
 import { collideCars, collideWithWalls } from 'shared/collision';
 import { gridPosition, PLAYER_COLORS } from 'shared/grid';
 import { NO_INPUT, stepWithEffects } from 'shared/handling';
@@ -12,7 +13,9 @@ import {
   type ProfileMessage,
   type RaceStateMessage,
   type RecordsMessage,
+  type UnlockedMessage,
 } from 'shared/protocol';
+import { buildRacingLine } from 'shared/racingLine';
 import { distanceVolume, engineNote } from 'shared/sound';
 import { gridStart, ROAD_TOP, trackById, TRACKS, trackPath, type TrackDef } from 'shared/tracks';
 import { DEFAULT_VEHICLE, VEHICLES, type VehicleId } from 'shared/vehicles';
@@ -42,6 +45,7 @@ const Players = game.GetService('Players');
 const RunService = game.GetService('RunService');
 const ReplicatedStorage = game.GetService('ReplicatedStorage');
 const StarterGui = game.GetService('StarterGui');
+const TextChatService = game.GetService('TextChatService');
 
 // The HUD shows the standings, so the player list isn't needed.
 StarterGui.SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false);
@@ -62,6 +66,7 @@ const itemEventsRemote = net.WaitForChild(REMOTE.itemEvents) as RemoteEvent;
 const voteRemote = net.WaitForChild(REMOTE.vote) as RemoteEvent;
 const chooseVehicleRemote = net.WaitForChild(REMOTE.chooseVehicle) as RemoteEvent;
 const profileRemote = net.WaitForChild(REMOTE.profile) as RemoteEvent;
+const unlockedRemote = net.WaitForChild(REMOTE.unlocked) as RemoteEvent;
 const recordsRemote = net.WaitForChild(REMOTE.records) as RemoteEvent;
 const serverNow = () => game.Workspace.GetServerTimeNow();
 
@@ -139,9 +144,36 @@ const vehiclePanel = new VehiclePanel((vehicle) => {
   picked = vehicle;
   chooseVehicleRemote.FireServer(vehicle);
 });
+/** The results news for the latest cup, shown while that cup's final results are up. */
+let news: string[] = [];
 profileRemote.OnClientEvent.Connect((message: ProfileMessage) => {
   profile = message;
   picked = message.vehicle;
+  // A send with no news (on joining, or after a vehicle pick) mustn't clear what a cup just earned.
+  if (message.news.size() > 0) news = message.news;
+});
+
+/** How long to wait for chat's general channel before giving up on an unlock line (s). */
+const CHAT_WAIT = 10;
+let chatMissing = false;
+
+/**
+ * Shows a line in chat's general channel on this device. Each device gets the server's unlock message,
+ * so everyone in the server sees it. Chat is set up a moment after the client starts, so the channel is waited for.
+ */
+function chatLine(text: string) {
+  task.spawn(() => {
+    const channels = TextChatService.WaitForChild('TextChannels', CHAT_WAIT) as Instance | undefined;
+    const general = channels?.WaitForChild('RBXGeneral', CHAT_WAIT) as Instance | undefined;
+    if (general && general.IsA('TextChannel')) general.DisplaySystemMessage(text);
+    else if (!chatMissing) {
+      chatMissing = true;
+      warn('[chat] no general channel, so unlocks are not shown in chat');
+    }
+  });
+}
+unlockedRemote.OnClientEvent.Connect((message: UnlockedMessage) => {
+  chatLine(`${message.name} unlocked the ${message.vehicle}!`);
 });
 camera.snapTo(car);
 
@@ -306,6 +338,25 @@ function updateEngines(
   );
 }
 
+/**
+ * Studio only: with the Workspace attribute `Autopilot` on, the AI drives our car instead of the controls,
+ * for playing a whole cup hands-free. Only the controls change, so the grid, finishing and reset work as
+ * usual. The driver is rebuilt when the track or vehicle changes.
+ */
+let autopilot: AiDriver | undefined;
+let autopilotFor = '';
+function autopilotInput(vehicle: VehicleId, cars: Map<number, CarState>): CarInput {
+  const key = `${def.id}/${vehicle}`;
+  let driver = autopilot;
+  if (!driver || autopilotFor !== key) {
+    driver = new AiDriver(track, buildRacingLine(track, DEFAULT_TUNING), { pace: 0.97, steerGain: 2.4 }, VEHICLES[vehicle].tuning);
+    autopilot = driver;
+    autopilotFor = key;
+  }
+  const traffic: CarState[] = [];
+  for (const [, other] of cars) traffic.push(other);
+  return driver.drive(car, track.project(car.x, car.z), traffic, 1, STEP).input;
+}
 
 RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (frameDt) => {
   const now = serverNow();
@@ -320,10 +371,10 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
 
   if (!heldOnGrid && input.consumeReset()) resetCar();
   if (input.consumeFire() && racing && phase === 'racing' && !finished) useItemRemote.FireServer(state!.raceId);
-  const wanted = input.carInput();
-  const controls = heldOnGrid || finished ? NO_INPUT : wanted;
-
   const otherCars = others.update(now, frameDt, ROAD_TOP);
+  const autopilotOn = RunService.IsStudio() && game.Workspace.GetAttribute('Autopilot') === true;
+  const wanted = autopilotOn ? autopilotInput(vehicle, otherCars) : input.carInput();
+  const controls = heldOnGrid || finished ? NO_INPUT : wanted;
 
   accumulator += math.min(frameDt, MAX_FRAME);
   while (accumulator >= STEP) {
@@ -378,9 +429,11 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
   camera.update(focus, frameDt);
   weather?.update(frameDt, focus.x, focus.z);
   meteors?.update(frameDt, focus.x, focus.z);
-  hud.update(state, myIndex, now, def.name, recordsPanel.chaseLine(def.id), recordsPanel.newBestLine(def.id));
+  // The cup's news is only for its final results, so it's dropped as soon as those are over.
+  if (!state?.cupFinal) news = [];
+  hud.update(state, myIndex, now, def.name, recordsPanel.chaseLine(def.id), recordsPanel.newBestLine(def.id), news);
   recordsPanel.update(state, def.name);
-  voteMenu.update(state);
+  voteMenu.update(state, profile?.trophies ?? {});
   vehiclePanel.update(state, picked, profile?.unlocked ?? [DEFAULT_VEHICLE], profile?.available ?? true);
   netReadout?.update(frameDt, state);
 });

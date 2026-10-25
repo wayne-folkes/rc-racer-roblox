@@ -74,23 +74,31 @@ export class ProfileBook {
 
   /**
    * Applies `change` to a player's profile: straight away in memory, then to whatever is stored. The
-   * stored value that UpdateAsync returns becomes the player's profile. Yields.
+   * stored value that UpdateAsync returns becomes the player's profile. Yields. Returns what the change
+   * did to the stored profile, or undefined if the save failed or the store isn't available.
    */
-  update(userId: number, change: (p: Profile) => Profile): void {
+  update(userId: number, change: (p: Profile) => Profile): { before: Profile; after: Profile } | undefined {
     const store = this.store;
-    if (!store || !this.available) return;
+    if (!store || !this.available) return undefined;
     this.profiles.set(userId, change(this.profiles.get(userId) ?? newProfile()));
 
+    // The transform can run more than once if the save is retried, so only the last run's value counts.
+    let before: Profile = newProfile();
     this.saving++;
     const saved = attempt(`saving ${userId}'s profile`, () =>
-      store.UpdateAsync<unknown, Profile>(`player_${userId}`, (stored) => $tuple(change(readProfile(stored)), [userId]))[0],
+      store.UpdateAsync<unknown, Profile>(`player_${userId}`, (stored) => {
+        before = readProfile(stored);
+        return $tuple(change(before), [userId]);
+      })[0],
     );
     this.saving--;
+    if (saved === undefined) return undefined;
 
     // A player who left while the save ran isn't added back.
-    if (saved !== undefined && Players.GetPlayerByUserId(userId) !== undefined) {
+    if (Players.GetPlayerByUserId(userId) !== undefined) {
       this.profiles.set(userId, saved);
       this.loadedIds.add(userId);
     }
+    return { before, after: saved };
   }
 }

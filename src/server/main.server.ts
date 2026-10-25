@@ -1,4 +1,14 @@
-import { countVotes, Cup, voteOptions, winningOption, type Scorer, type VoteOption } from 'shared/cup';
+import {
+  awardNews,
+  countVotes,
+  Cup,
+  cupAwards,
+  voteOptions,
+  winningOption,
+  type CupAward,
+  type Scorer,
+  type VoteOption,
+} from 'shared/cup';
 import { GRID_SIZE } from 'shared/grid';
 import { COUNTDOWN_SECONDS, NOT_FINISHED, TOTAL_LAPS } from 'shared/race';
 import { RaceSim, type Entrant } from 'shared/raceSim';
@@ -11,11 +21,12 @@ import {
   type ProfileMessage,
   type RaceStateMessage,
   type RecordsMessage,
+  type UnlockedMessage,
 } from 'shared/protocol';
 import { fastestPossible, NO_TIME, type RecordKind } from 'shared/records';
-import { newProfile, withRace, withVehicle, type CupRecord, type Profile } from 'shared/profile';
+import { newProfile, NO_TROPHY, withCupResult, withRace, withVehicle, type CupRecord, type Profile } from 'shared/profile';
 import type { TrackPath } from 'shared/trackPath';
-import { trackById, TRACKS, trackPath, type CircuitId, type TrackDef } from 'shared/tracks';
+import { CIRCUITS, trackById, TRACKS, trackPath, type CircuitId, type TrackDef } from 'shared/tracks';
 import { isUnlocked, unlockedVehicles } from 'shared/unlocks';
 import { DEFAULT_VEHICLE, isVehicleId, VEHICLE_IDS, VEHICLES, type VehicleId } from 'shared/vehicles';
 import { ProfileBook } from './profile';
@@ -41,6 +52,11 @@ const RESULTS_SECONDS = 10;
 const CUP_RESULTS_SECONDS = 15;
 /** Once the first player finishes, the rest have this long before the race ends. */
 const FINISH_GRACE_SECONDS = 30;
+// Two Studio-only switches, for testing a whole cup quickly. Both are read only in Studio, so a live
+// server ignores them. Set them from the command bar in a play session, e.g.
+// workspace:SetAttribute("CupLaps", 1). `CupLaps` (a number, 1 or more) makes each race that many laps
+// instead of TOTAL_LAPS, read as each race starts. `Autopilot` (true) has the AI drive the player's own
+// car on the client, for playing a whole cup hands-free (main.client.ts).
 const STEP = 1 / 120;
 const STATE_INTERVAL = 0.25;
 /**
@@ -86,6 +102,9 @@ chooseVehicleRemote.Parent = net;
 const profileRemote = new Instance('RemoteEvent');
 profileRemote.Name = REMOTE.profile;
 profileRemote.Parent = net;
+const unlockedRemote = new Instance('RemoteEvent');
+unlockedRemote.Name = REMOTE.unlocked;
+unlockedRemote.Parent = net;
 net.Parent = ReplicatedStorage;
 
 const now = () => game.Workspace.GetServerTimeNow();
@@ -135,6 +154,11 @@ const recorded = new Set<number>();
 const newBests = new Map<number, Set<RecordKind>>();
 /** Each player's vehicle pick by user id. It applies from the next race start. */
 const vehiclePicks = new Map<number, VehicleId>();
+/** Each player's award from the latest finished cup, by user id. Shown on that cup's final results only. */
+let cupAwardsByUser = new Map<number, CupAward>();
+
+/** One change to a player's profile, from a race or a cup. */
+type Change = (p: Profile) => Profile;
 
 /** Sends a player their profile: their pick, what they can pick, and their trophies. */
 function sendProfile(player: Player, news: string[] = []) {
@@ -202,6 +226,8 @@ function recordTimes(s: RaceSim, index: number) {
   // Best times are still kept per track only, so a truck's times would land on the buggy's boards.
   // Only the buggy's are kept until they're kept per vehicle (docs/progression.md).
   if (racer.vehicle !== 'buggy') return;
+  // A race shortened by the Studio-only CupLaps switch isn't a real race time.
+  if (s.race.totalLaps !== TOTAL_LAPS) return;
   const player = Players.GetPlayerByUserId(racer.userId);
   if (!player) return;
   const finish = s.race.finishTimes[index];
@@ -229,6 +255,7 @@ function recordTimes(s: RaceSim, index: number) {
 }
 
 function stateMessage(): RaceStateMessage {
+  const cupFinal = mode?.kind === 'cup' && mode.cup.done() && phase === 'results';
   return {
     phase,
     phaseEndsAt,
@@ -256,17 +283,24 @@ function stateMessage(): RaceStateMessage {
     modeLabel: modeLabel(),
     voteOptions: vote ? vote.options.map((o) => o.label) : [],
     voteCounts: vote ? voteCounts(vote) : [],
+    voteCups: vote ? vote.options.map((o) => (o.kind === 'cup' ? o.id : '')) : [],
     cup:
       mode?.kind === 'cup'
-        ? mode.cup.standings().map((r) => ({
-            name: r.name,
-            color: r.color,
-            points: r.points,
-            lastPoints: r.lastPoints,
-            userId: r.userId,
-          }))
+        ? mode.cup.standings().map((r) => {
+            // Trophies and the Rival win show on the results after a cup's last race, and nowhere else.
+            const award = cupFinal ? cupAwardsByUser.get(r.userId) : undefined;
+            return {
+              name: r.name,
+              color: r.color,
+              points: r.points,
+              lastPoints: r.lastPoints,
+              userId: r.userId,
+              trophy: award?.trophy ?? NO_TROPHY,
+              rival: award?.rival ?? false,
+            };
+          })
         : [],
-    cupFinal: mode?.kind === 'cup' && mode.cup.done() && phase === 'results',
+    cupFinal,
     serverWorstFrame: math.max(worstFrame, previousWorstFrame),
   };
 }
@@ -304,6 +338,7 @@ function enterPhase(to: Phase, seconds = 0) {
 
 function startVote(seconds: number) {
   mode = undefined;
+  cupAwardsByUser = new Map<number, CupAward>();
   vote = { options: voteOptions(() => math.random()), picks: new Map() };
   enterPhase('vote', seconds);
 }
@@ -316,6 +351,13 @@ function closeVote() {
   const quick = option.kind === 'quick' ? trackById(option.id) : undefined;
   mode = quick ? { kind: 'quick', track: quick } : { kind: 'cup', cup: new Cup(option.id as CircuitId) };
   startRace();
+}
+
+/** Laps in each race: TOTAL_LAPS, or the Studio-only `CupLaps` switch (see the top of this file). */
+function raceLaps(): number {
+  if (!RunService.IsStudio()) return TOTAL_LAPS;
+  const laps = game.Workspace.GetAttribute('CupLaps');
+  return typeIs(laps, 'number') && laps >= 1 ? math.floor(laps) : TOTAL_LAPS;
 }
 
 function startRace() {
@@ -334,7 +376,7 @@ function startRace() {
   }
   raceId++;
   // A fresh hazard layout every race; players' devices roll the same one from this seed.
-  sim = new RaceSim(pathOf(track), entrants, math.random(1, 2 ** 30), track.layout);
+  sim = new RaceSim(pathOf(track), entrants, math.random(1, 2 ** 30), track.layout, raceLaps());
   scorers = sim.racers.map((r) => ({
     key: r.userId !== 0 ? `player:${r.userId}` : `ai:${r.name}`,
     name: r.name,
@@ -354,25 +396,82 @@ function raceOver(s: RaceSim): boolean {
   return first !== undefined && s.race.clock - first >= FINISH_GRACE_SECONDS;
 }
 
-/** The race is over: score it if it's part of a cup, and show the results. */
+/**
+ * Saves a player's changes from a race (and their cup award, if they got one), then tells them what
+ * they earned, and everyone about any vehicle they've just unlocked. Yields, so the caller runs it on
+ * its own thread.
+ */
+function saveProgress(userId: number, name: string, changes: Change[], award: CupAward | undefined, cupName: string) {
+  const result = profiles.update(userId, (p) => {
+    let updated = p;
+    for (const change of changes) updated = change(updated);
+    return updated;
+  });
+  const unlocked: string[] = [];
+  if (result) {
+    const before = unlockedVehicles(result.before);
+    for (const id of unlockedVehicles(result.after)) {
+      if (before.includes(id)) continue;
+      const vehicle = VEHICLES[id].name;
+      unlocked.push(vehicle);
+      const message: UnlockedMessage = { name, vehicle };
+      unlockedRemote.FireAllClients(message);
+    }
+  }
+  // A player who left while the save ran has nothing to be told.
+  const player = Players.GetPlayerByUserId(userId);
+  if (player && (award !== undefined || unlocked.size() > 0)) {
+    sendProfile(player, awardNews(award, cupName, unlocked, result !== undefined));
+  }
+}
+
+/** The race is over: score it if it's part of a cup, save each player's progress, and show the results. */
 function finishRace(s: RaceSim) {
   // Players still out on track when time ran out keep their best lap.
   s.racers.forEach((r, i) => {
     if (r.userId !== 0) recordTimes(s, i);
   });
+  // Each player's changes from this race, in order, so each player gets one profile write for it.
+  const pending = new Map<number, { name: string; changes: Change[] }>();
+  const addChange = (userId: number, name: string, change: Change) => {
+    const entry: { name: string; changes: Change[] } = pending.get(userId) ?? { name, changes: [] };
+    entry.changes.push(change);
+    pending.set(userId, entry);
+  };
   // A player who finished scores the race, and a win if they're first overall (AI cars included).
   const standings = s.race.standings();
   s.racers.forEach((r, i) => {
     if (r.userId === 0 || s.race.finishTimes[i] === NOT_FINISHED) return;
     const won = standings[0] === i;
-    task.spawn(() => profiles.update(r.userId, (p) => withRace(p, won)));
+    addChange(r.userId, r.name, (p) => withRace(p, won));
   });
+
   let seconds = RESULTS_SECONDS;
+  let cupName = '';
+  const awards = new Map<number, CupAward>();
   if (mode?.kind === 'cup') {
-    mode.cup.addRace(s.race.standings().map((i) => scorers[i]));
-    if (mode.cup.done()) seconds = CUP_RESULTS_SECONDS;
+    const cup = mode.cup;
+    cup.addRace(standings.map((i) => scorers[i]));
+    if (cup.done()) {
+      seconds = CUP_RESULTS_SECONDS;
+      cupName = CIRCUITS[cup.circuit].name;
+      // Players still in the server get their trophy and Rival win, even if they didn't finish this race.
+      for (const award of cupAwards(cup.standings(), cup.tracks.size())) {
+        awards.set(award.userId, award);
+        const player = Players.GetPlayerByUserId(award.userId);
+        if (player) addChange(award.userId, player.DisplayName, (p) => withCupResult(p, cup.circuit, award.trophy, award.rival));
+      }
+      cupAwardsByUser = awards;
+    }
   }
+
+  // The results come up first: a save that can't yield (no store) would otherwise send news before them.
   enterPhase('results', seconds);
+  // Each save runs on its own thread, so the results don't wait for the data store.
+  for (const [userId, entry] of pending) {
+    const award = awards.get(userId);
+    task.spawn(() => saveProgress(userId, entry.name, entry.changes, award, cupName));
+  }
 }
 
 /** After the results: the cup's next race, or a new vote. */
