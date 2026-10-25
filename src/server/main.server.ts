@@ -23,7 +23,7 @@ import {
   type RecordsMessage,
   type UnlockedMessage,
 } from 'shared/protocol';
-import { fastestPossible, NO_TIME, type RecordKind } from 'shared/records';
+import { fastestPossible, NO_TIME, recordKey, type RecordKind } from 'shared/records';
 import { newProfile, NO_TROPHY, withCupResult, withRace, withVehicle, type CupRecord, type Profile } from 'shared/profile';
 import type { TrackPath } from 'shared/trackPath';
 import { CIRCUITS, trackById, TRACKS, trackPath, type CircuitId, type TrackDef } from 'shared/tracks';
@@ -150,8 +150,12 @@ const records = new RecordBook();
 const profiles = new ProfileBook();
 /** Racer indices whose times from this race have been handed to the records. */
 const recorded = new Set<number>();
-/** Players who beat their own best on the current track, and with what. */
-const newBests = new Map<number, Set<RecordKind>>();
+/**
+ * Players who beat their own best on the current track, and with what, by user id and record key: a
+ * buggy best mustn't show as new once the player has switched to the truck.
+ */
+const newBests = new Map<string, Set<RecordKind>>();
+const newBestsKey = (userId: number, key: string) => `${userId} ${key}`;
 /** Each player's vehicle pick by user id. It applies from the next race start. */
 const vehiclePicks = new Map<number, VehicleId>();
 /** Each player's award from the latest finished cup, by user id. Shown on that cup's final results only. */
@@ -183,21 +187,36 @@ function raceVehicle(userId: number): VehicleId {
   return pick !== undefined && isUnlocked(profiles.get(userId) ?? newProfile(), pick) ? pick : DEFAULT_VEHICLE;
 }
 
-/** Sends a player the current track's records and their own bests on it. */
+/**
+ * The vehicle a player's records are for: the one they're racing in this race, or else the pick they'd
+ * race with, so the lobby shows the board for what they've chosen.
+ */
+function recordVehicle(userId: number): VehicleId {
+  if (sim) {
+    const index = sim.indexOf(userId);
+    if (index >= 0) return sim.racers[index].vehicle;
+  }
+  return raceVehicle(userId);
+}
+
+/** Sends a player the current track's records for their vehicle, and their own bests on it. */
 function sendRecords(player: Player) {
   const trackId = track.id;
+  const vehicle = recordVehicle(player.UserId);
+  const key = recordKey(trackId, vehicle);
   task.spawn(() => {
-    const board = records.board(trackId);
-    // The track may have changed while the board was read; the next send covers the new one.
-    if (track.id !== trackId || !player.IsDescendantOf(Players)) return;
-    const mine = newBests.get(player.UserId);
+    const board = records.board(key);
+    // The track or vehicle may have changed while the board was read; the next send covers the new one.
+    if (track.id !== trackId || recordVehicle(player.UserId) !== vehicle || !player.IsDescendantOf(Players)) return;
+    const mine = newBests.get(newBestsKey(player.UserId, key));
     const message: RecordsMessage = {
       trackId,
+      vehicle,
       available: records.available,
       race: board.race,
       lap: board.lap,
-      myRace: records.best(player.UserId, trackId, 'race') ?? NO_TIME,
-      myLap: records.best(player.UserId, trackId, 'lap') ?? NO_TIME,
+      myRace: records.best(player.UserId, key, 'race') ?? NO_TIME,
+      myLap: records.best(player.UserId, key, 'lap') ?? NO_TIME,
       newRace: mine?.has('race') ?? false,
       newLap: mine?.has('lap') ?? false,
     };
@@ -223,9 +242,6 @@ function recordTimes(s: RaceSim, index: number) {
   if (recorded.has(index)) return;
   recorded.add(index);
   const racer = s.racers[index];
-  // Best times are still kept per track only, so a truck's times would land on the buggy's boards.
-  // Only the buggy's are kept until they're kept per vehicle (docs/progression.md).
-  if (racer.vehicle !== 'buggy') return;
   // A race shortened by the Studio-only CupLaps switch isn't a real race time.
   if (s.race.totalLaps !== TOTAL_LAPS) return;
   const player = Players.GetPlayerByUserId(racer.userId);
@@ -236,18 +252,20 @@ function recordTimes(s: RaceSim, index: number) {
     ['lap', s.race.racers[index].bestLap()],
   ];
   const trackId = track.id;
+  // Each vehicle has its own boards, so a truck's times go on the truck's.
+  const key = recordKey(trackId, racer.vehicle);
   const length = s.track.length;
   task.spawn(() => {
     let improved = false;
     for (const [kind, time] of times) {
       const laps = kind === 'race' ? s.race.totalLaps : 1;
       if (time === undefined || time < fastestPossible(length, laps, MAX_REPORTED_SPEED)) continue;
-      if (!records.submit(player, trackId, kind, time)) continue;
+      if (!records.submit(player, key, kind, time)) continue;
       improved = true;
       if (track.id !== trackId) continue;
-      const kinds = newBests.get(player.UserId) ?? new Set<RecordKind>();
+      const kinds = newBests.get(newBestsKey(player.UserId, key)) ?? new Set<RecordKind>();
       kinds.add(kind);
-      newBests.set(player.UserId, kinds);
+      newBests.set(newBestsKey(player.UserId, key), kinds);
     }
     // A new best may have changed the top 10, which everyone sees.
     if (improved) sendRecordsToAll();
@@ -536,7 +554,11 @@ voteRemote.OnServerEvent.Connect((player, pick) => {
 
 chooseVehicleRemote.OnServerEvent.Connect((player, vehicle) => {
   const profile = profiles.get(player.UserId) ?? newProfile();
-  if (isVehicleId(vehicle) && isUnlocked(profile, vehicle)) vehiclePicks.set(player.UserId, vehicle);
+  if (isVehicleId(vehicle) && isUnlocked(profile, vehicle)) {
+    vehiclePicks.set(player.UserId, vehicle);
+    // The lobby's board follows the pick.
+    sendRecords(player);
+  }
   // Sent back either way, so the device learns the pick the server really has.
   sendProfile(player);
 });

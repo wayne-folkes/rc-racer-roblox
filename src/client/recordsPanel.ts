@@ -1,6 +1,7 @@
 import type { RaceStateMessage, RecordRow, RecordsMessage } from 'shared/protocol';
 import { formatTime } from 'shared/race';
 import { NO_TIME } from 'shared/records';
+import { DEFAULT_VEHICLE, VEHICLES } from 'shared/vehicles';
 
 // The track's best times, on the left of the screen before a race (in the lobby and the countdown):
 // the top 10 for a whole race and for a lap, and the player's own bests. While racing, one line under
@@ -84,7 +85,9 @@ export class RecordsPanel {
     if (!r || !before) return;
     const height = game.Workspace.CurrentCamera?.ViewportSize.Y ?? 720;
     this.scale.Scale = math.clamp(height / 600, 0.6, 1);
-    this.title.Text = `${trackName.upper()} RECORDS`;
+    // The buggy's boards keep the plain title; any other vehicle's name goes after it.
+    const vehicle = r.vehicle !== DEFAULT_VEHICLE ? ` · ${VEHICLES[r.vehicle].name.upper()}` : '';
+    this.title.Text = `${trackName.upper()} RECORDS${vehicle}`;
     this.race.Text = lines('RACE', r.race);
     this.lap.Text = lines('LAP', r.lap);
     const yours: string[] = [];

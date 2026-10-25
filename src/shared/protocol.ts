@@ -15,8 +15,8 @@ import type { VehicleId } from './vehicles';
 //                               RaceStateMessage
 //   server → all     ItemEvents (reliable, as they happen): ItemEvent[] (from items.ts)
 //   server → all     Unlocked   (reliable, when a player unlocks a vehicle): UnlockedMessage, for the chat line
-//   server → player  Records    (reliable, when the track changes, on joining, and after a new best):
-//                               RecordsMessage, with that player's own bests
+//   server → player  Records    (reliable, when the track changes, on joining, after a new best, and after
+//                               a vehicle pick): RecordsMessage, with that player's own bests
 //   server → player  Profile    (reliable, on joining, after a vehicle pick, and after a cup): ProfileMessage
 
 export const NET_FOLDER = 'Net';
@@ -133,7 +133,10 @@ export interface RecordRow {
 
 /** A track's best times, and the player's own, in seconds (NO_TIME in records.ts for none). */
 export interface RecordsMessage {
+  /** The plain track id. */
   trackId: string;
+  /** The vehicle whose times these are. */
+  vehicle: VehicleId;
   /** False if the records couldn't be loaded (or, in Studio, API access is off). */
   available: boolean;
   race: RecordRow[];

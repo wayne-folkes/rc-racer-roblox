@@ -3,8 +3,9 @@ import { LEADERBOARD_SIZE, placeInTop, toMs, withBest, type PersonalBests, type 
 import { attempt } from './attempt';
 
 // Best times in Roblox's data stores. Each player's own bests are one entry ("player_<userId>") in
-// a data store; each track's top 10 for a kind of time is an ordered data store, scoped by track id,
-// with every player's best in milliseconds, which Roblox can hand back sorted. Studio writes to
+// a data store; each track and vehicle's top 10 for a kind of time is an ordered data store, scoped
+// by its record key (shared/records.ts recordKey), with every player's best in milliseconds, which
+// Roblox can hand back sorted. Studio writes to
 // stores of its own, so testing doesn't touch the real records. Every call here that reaches a data
 // store yields, so the server calls them from their own thread (task.spawn).
 
@@ -55,8 +56,9 @@ export class RecordBook {
     this.available = false;
   }
 
-  private ordered(kind: RecordKind, trackId: string): OrderedDataStore {
-    return DataStoreService.GetOrderedDataStore(`${kind === 'race' ? 'Race' : 'Lap'}Times${SUFFIX}`, trackId);
+  /** The ordered store for `kind`, scoped by a `recordKey`. */
+  private ordered(kind: RecordKind, key: string): OrderedDataStore {
+    return DataStoreService.GetOrderedDataStore(`${kind === 'race' ? 'Race' : 'Lap'}Times${SUFFIX}`, key);
   }
 
   /** Loads a player's bests when they join. Yields. */
@@ -79,25 +81,25 @@ export class RecordBook {
     this.bests.delete(userId);
   }
 
-  /** A player's best on a track, in seconds, if they have one. */
-  best(userId: number, trackId: string, kind: RecordKind): number | undefined {
-    const ms = this.bests.get(userId)?.[trackId]?.[kind];
+  /** A player's best under `key` (a `recordKey`), in seconds, if they have one. */
+  best(userId: number, key: string, kind: RecordKind): number | undefined {
+    const ms = this.bests.get(userId)?.[key]?.[kind];
     return ms !== undefined ? ms / 1000 : undefined;
   }
 
-  /** A track's top 10 of each kind, read from the stores if not read lately. Yields. */
-  board(trackId: string): Board {
-    const cached = this.boards.get(trackId);
+  /** The top 10 of each kind under `key` (a `recordKey`), read from the stores if not read lately. Yields. */
+  board(key: string): Board {
+    const cached = this.boards.get(key);
     if (cached && os.clock() - cached.readAt < BOARD_TTL) return cached;
-    const board: Board = { race: this.readTop('race', trackId), lap: this.readTop('lap', trackId), readAt: os.clock() };
-    this.boards.set(trackId, board);
+    const board: Board = { race: this.readTop('race', key), lap: this.readTop('lap', key), readAt: os.clock() };
+    this.boards.set(key, board);
     return board;
   }
 
-  private readTop(kind: RecordKind, trackId: string): RecordRow[] {
+  private readTop(kind: RecordKind, key: string): RecordRow[] {
     if (!this.available) return [];
-    const page = attempt(`reading the ${kind} top 10 on ${trackId}`, () =>
-      this.ordered(kind, trackId).GetSortedAsync(true, LEADERBOARD_SIZE).GetCurrentPage(),
+    const page = attempt(`reading the ${kind} top 10 on ${key}`, () =>
+      this.ordered(kind, key).GetSortedAsync(true, LEADERBOARD_SIZE).GetCurrentPage(),
     );
     if (!page) return [];
     const rows: RecordRow[] = [];
@@ -120,31 +122,31 @@ export class RecordBook {
   }
 
   /**
-   * A player set `seconds` for `kind` on a track. Saves it if it's their best, and puts it on the top
-   * 10 if it's good enough. Returns whether it was a new personal best. Yields.
+   * A player set `seconds` for `kind` under `key` (a `recordKey`). Saves it if it's their best, and
+   * puts it on the top 10 if it's good enough. Returns whether it was a new personal best. Yields.
    */
-  submit(player: Player, trackId: string, kind: RecordKind, seconds: number): boolean {
+  submit(player: Player, key: string, kind: RecordKind, seconds: number): boolean {
     const store = this.personal;
     const bests = this.bests.get(player.UserId);
     if (!store || !this.available || !bests) return false;
     const ms = toMs(seconds);
-    const old = bests[trackId]?.[kind];
+    const old = bests[key]?.[kind];
     if (old !== undefined && old <= ms) return false;
-    this.bests.set(player.UserId, withBest(bests, trackId, kind, ms));
+    this.bests.set(player.UserId, withBest(bests, key, kind, ms));
 
     // Both writes keep whichever time is lower, in case another server saved a faster one meanwhile.
     attempt(`saving ${player.UserId}'s best`, () =>
       store.UpdateAsync<unknown, PersonalBests>(`player_${player.UserId}`, (stored) =>
-        $tuple(withBest(readBests(stored), trackId, kind, ms), [player.UserId]),
+        $tuple(withBest(readBests(stored), key, kind, ms), [player.UserId]),
       ),
     );
-    attempt(`saving ${player.UserId}'s ${kind} on ${trackId}`, () =>
-      this.ordered(kind, trackId).UpdateAsync(tostring(player.UserId), (stored) =>
+    attempt(`saving ${player.UserId}'s ${kind} on ${key}`, () =>
+      this.ordered(kind, key).UpdateAsync(tostring(player.UserId), (stored) =>
         isTime(stored) && stored <= ms ? undefined : ms,
       ),
     );
 
-    const board = this.boards.get(trackId);
+    const board = this.boards.get(key);
     if (board) {
       this.names.set(player.UserId, player.DisplayName);
       board[kind] = placeInTop(board[kind], { name: player.DisplayName, userId: player.UserId, time: ms / 1000 });

@@ -52,7 +52,7 @@ allow links off the platform. Edit `design/icon.html` or `design/thumbnail.html`
 | Cups, votes, other tracks, scenery and weather in Studio | ⏳ not yet checked |
 | Multiplayer in Studio | ✅ (2026-10-23) a 2-player test races the AI and bumps feel right, after drawing other cars where they really are rather than easing behind them |
 | Other cars on a real phone | ✅ (2026-10-24) smooth on the published place, after carrying cars round the track through the phone's 0.68 s gaps in snapshots on home wifi |
-| Best times | ✅ in Node: bests only improve, the top 10 keeps one line per player and goes to whoever set a tie first. ✅ in Studio (2026-10-24): times save to and load from the data stores, a rejoining player gets their bests and the top 10, and a 3-lap race saved its race time and best lap on finishing |
+| Best times | ✅ in Node: bests only improve, the top 10 keeps one line per player and goes to whoever set a tie first. ✅ in Studio (2026-10-24): times save to and load from the data stores, a rejoining player gets their bests and the top 10, and a 3-lap race saved its race time and best lap on finishing. ✅ in Studio (2026-10-25): a 3-lap truck race on Olympus Rally saved under `truck_mars`, in the player's bests and on the truck's race and lap boards, leaving the buggy's `mars` boards untouched |
 | Multiplayer on real phones | ✅ (2026-10-24) three iPhones raced a Space Cup together over 5G on a train and it played well: 60 fps, 37 ms ping, snapshots at 20/s with the longest arrival gap 0.13 s. Home wifi was worse than 5G (69 ms ping, gaps up to 0.68 s) |
 | Opens in Studio and drives round Meadow Loop | ✅ (2026-10-23) the track builds with no gaps on the bends, the car drives round it, and the camera matches the web game's view |
 | Vehicles in Studio | Partly (2026-10-24, one player): the panel shows during the vote above the controls hint, with each car turning in its card. A new profile sees the truck as a silhouette with "???" and its hint, and can't pick it. With a Classic Cup bronze in `Profiles_studio` the truck unlocks; picking it (V) saves it when the race starts, and a restart remembers it. The truck drives, picks up items and reports at 20/s. A Classic Cup of 1-lap races driven by `Autopilot`, from a profile with no trophies, ended 2nd overall: the final standings showed 🥈 beside the player, the news under them read "Silver in the Classic Cup · Unlocked: Monster Truck", and the store held the silver, the cup, 4 more races and a race win. Still to check: the unlock line in the chat window (sent, not seen, as Studio's screen capture leaves chat out), a Rival win, another player seeing the truck, a stand-in driving one, and the panel on a phone |
@@ -149,8 +149,8 @@ Friends in the same server race each other, with AI cars filling the grid.
   out from the saved profile (`shared/unlocks.ts`). Players pick one between races, from a panel of
   3D cards (click or tap, V, or a gamepad's D-pad during the vote); a locked vehicle shows as a black
   silhouette with "???" and how to unlock it. The pick is remembered, and the server puts each player
-  in the race with their pick if they've unlocked it. Truck times aren't saved yet (see
-  `docs/progression.md`).
+  in the race with their pick if they've unlocked it. Truck times are saved too, on boards of their
+  own (see Best times below).
 - **Who runs what:** the server runs the race (`shared/raceSim.ts`: AI driving, laps, positions,
   results) at 120 Hz. Each player's device drives that player's car, so it answers the controls
   instantly, and reports it 20 times a second. The server sends every car's position 20 times a
@@ -167,8 +167,9 @@ Friends in the same server race each other, with AI cars filling the grid.
   when they were sent and when they arrived) and the server's longest frame. Stalls over 0.4 s are
   printed, so they show in the Developer Console (`/console` in chat).
 - **Best times** (`shared/records.ts`, `server/records.ts`, `client/recordsPanel.ts`): each player's
-  best race and best lap on every track, each way round, and a top 10 of each per track, kept in
-  Roblox data stores. A player's times are saved as they cross the line (their best lap is kept if
+  best race and best lap on every track, each way round, and per vehicle (the buggy's under the plain
+  track id, and others under `<vehicle>_<trackId>`), and a top 10 of each per track and vehicle, kept
+  in Roblox data stores. A player's times are saved as they cross the line (their best lap is kept if
   time runs out first); only an improvement is written, and every write keeps the lower of the
   stored and new times, so two servers can't undo each other. Times quicker than the whole distance
   at the server's speed limit (1.6× top speed) are dropped. The top 10 is re-read at most once a

@@ -186,9 +186,10 @@ player's next cup.
 
 ## Best times per vehicle
 
-The records you're building (`server/records.ts`, not yet committed) are kept per track. Each
+Best times (`server/records.ts`) were kept per track before this slice. Each
 vehicle gets its own, as in the web game, with a record key of `trackId` for the buggy and
-`truck:<trackId>` for the truck. That key is used both in the player's own bests and as the scope of
+`truck_<trackId>` for the truck (an underscore rather than a colon, since the key is also an ordered
+data store scope). That key is used both in the player's own bests and as the scope of
 the ordered stores. Keeping the buggy's key unprefixed means buggy times saved before this slice
 stay where they are. `RecordsMessage` gains `vehicle`, and the server sends a player the records again
 when they pick a different vehicle.

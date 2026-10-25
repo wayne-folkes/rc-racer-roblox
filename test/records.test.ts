@@ -1,9 +1,15 @@
 import './setup';
 import { expect, test } from 'vitest';
 import type { RecordRow } from '../src/shared/protocol';
-import { fastestPossible, placeInTop, toMs, withBest } from '../src/shared/records';
+import { fastestPossible, placeInTop, recordKey, toMs, withBest } from '../src/shared/records';
 
 const row = (userId: number, time: number): RecordRow => ({ name: `P${userId}`, userId, time });
+
+test('the buggy keeps the plain track id, and other vehicles get their own key', () => {
+  expect(recordKey('meadow', 'buggy')).toBe('meadow');
+  expect(recordKey('meadow', 'truck')).toBe('truck_meadow');
+  expect(recordKey('meadow-rev', 'truck')).toBe('truck_meadow-rev');
+});
 
 test('a best is kept per track and direction, and only replaced by a faster time', () => {
   let bests = withBest(undefined, 'demo', 'lap', 24_100);
