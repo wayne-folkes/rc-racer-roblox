@@ -51,7 +51,8 @@ allow links off the platform. Edit `design/icon.html` or `design/thumbnail.html`
 | Scenery and meteors match the web game | ✅ in Node: scenery plans keep clear of the road on all 16 tracks (and matched the web's placement exactly in a one-off comparison); meteor timings, landings and crater limits follow the web's |
 | Cups, votes, other tracks, scenery and weather in Studio | ⏳ not yet checked |
 | Multiplayer in Studio | ✅ (2026-10-23) a 2-player test races the AI and bumps feel right, after drawing other cars where they really are rather than easing behind them |
-| Other cars on a real phone | ✅ (2026-10-24) smooth on the published place, after carrying cars round the track through the phone's 0.68 s gaps in snapshots; other players' cars not yet checked from a second device |
+| Other cars on a real phone | ✅ (2026-10-24) smooth on the published place, after carrying cars round the track through the phone's 0.68 s gaps in snapshots on home wifi |
+| Multiplayer on real phones | ✅ (2026-10-24) three iPhones raced a Space Cup together over 5G on a train and it played well: 60 fps, 37 ms ping, snapshots at 20/s with the longest arrival gap 0.13 s. Home wifi was worse than 5G (69 ms ping, gaps up to 0.68 s) |
 | Opens in Studio and drives round Meadow Loop | ✅ (2026-10-23) the track builds with no gaps on the bends, the car drives round it, and the camera matches the web game's view |
 
 Controls feel good with keyboard, gamepad and touch (Studio's device emulator, one finger at a time),
