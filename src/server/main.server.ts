@@ -1,4 +1,3 @@
-import { DEFAULT_TUNING } from 'shared/carPhysics';
 import { countVotes, Cup, voteOptions, winningOption, type Scorer, type VoteOption } from 'shared/cup';
 import { GRID_SIZE } from 'shared/grid';
 import { COUNTDOWN_SECONDS, NOT_FINISHED, TOTAL_LAPS } from 'shared/race';
@@ -15,6 +14,7 @@ import {
 import { fastestPossible, NO_TIME, type RecordKind } from 'shared/records';
 import type { TrackPath } from 'shared/trackPath';
 import { trackById, TRACKS, trackPath, type CircuitId, type TrackDef } from 'shared/tracks';
+import { DEFAULT_VEHICLE, isVehicleId, VEHICLE_IDS, VEHICLES, type VehicleId } from 'shared/vehicles';
 import { RecordBook } from './records';
 
 // Runs the races. Players vote between the two cups and two quick races; a cup is four races with
@@ -41,9 +41,11 @@ const STEP = 1 / 120;
 const STATE_INTERVAL = 0.25;
 /**
  * A report that moves a car faster than this (studs/s, plus RESET_ALLOWANCE) is ignored, so a device
- * can't teleport its car round the track.
+ * can't teleport its car round the track. That's 1.6× the fastest vehicle's top speed, so a faster
+ * vehicle added later isn't rejected.
  */
-const MAX_REPORTED_SPEED = DEFAULT_TUNING.maxSpeed * 1.6;
+const MAX_REPORTED_SPEED =
+  VEHICLE_IDS.reduce((fastest, id) => math.max(fastest, VEHICLES[id].tuning.maxSpeed), 0) * 1.6;
 /** A reset moves a car back onto the centreline: at most about half the road's width. */
 const RESET_ALLOWANCE = 4;
 /** Highest a reported car can be: a fast car off a ramp peaks a little under 2 studs up. */
@@ -74,6 +76,9 @@ itemEventsRemote.Parent = net;
 const recordsRemote = new Instance('RemoteEvent');
 recordsRemote.Name = REMOTE.records;
 recordsRemote.Parent = net;
+const chooseVehicleRemote = new Instance('RemoteEvent');
+chooseVehicleRemote.Name = REMOTE.chooseVehicle;
+chooseVehicleRemote.Parent = net;
 net.Parent = ReplicatedStorage;
 
 const now = () => game.Workspace.GetServerTimeNow();
@@ -120,6 +125,8 @@ const records = new RecordBook();
 const recorded = new Set<number>();
 /** Players who beat their own best on the current track, and with what. */
 const newBests = new Map<number, Set<RecordKind>>();
+/** Each player's vehicle pick by user id. It applies from the next race start. */
+const vehiclePicks = new Map<number, VehicleId>();
 
 /** Sends a player the current track's records and their own bests on it. */
 function sendRecords(player: Player) {
@@ -161,6 +168,9 @@ function recordTimes(s: RaceSim, index: number) {
   if (recorded.has(index)) return;
   recorded.add(index);
   const racer = s.racers[index];
+  // Best times are still kept per track only, so a truck's times would land on the buggy's boards.
+  // Only the buggy's are kept until they're kept per vehicle (docs/progression.md).
+  if (racer.vehicle !== 'buggy') return;
   const player = Players.GetPlayerByUserId(racer.userId);
   if (!player) return;
   const finish = s.race.finishTimes[index];
@@ -193,7 +203,13 @@ function stateMessage(): RaceStateMessage {
     phaseEndsAt,
     raceId,
     racers: sim
-      ? sim.racers.map((r) => ({ name: r.name, color: r.color, gridSlot: r.gridSlot, userId: r.userId }))
+      ? sim.racers.map((r) => ({
+          name: r.name,
+          color: r.color,
+          gridSlot: r.gridSlot,
+          userId: r.userId,
+          vehicle: r.vehicle,
+        }))
       : [],
     totalLaps: sim ? sim.race.totalLaps : TOTAL_LAPS,
     goAt,
@@ -278,7 +294,9 @@ function startRace() {
   track = upcoming;
   const entrants: Entrant[] = [];
   for (const p of joined) {
-    if (entrants.size() < GRID_SIZE) entrants.push({ name: p.DisplayName, userId: p.UserId });
+    if (entrants.size() < GRID_SIZE) {
+      entrants.push({ name: p.DisplayName, userId: p.UserId, vehicle: vehiclePicks.get(p.UserId) ?? DEFAULT_VEHICLE });
+    }
   }
   raceId++;
   // A fresh hazard layout every race; players' devices roll the same one from this seed.
@@ -354,6 +372,7 @@ Players.PlayerRemoving.Connect((player) => {
     if (index >= 0) sim.standIn(index);
   }
   if (vote) vote.picks.delete(player.UserId);
+  vehiclePicks.delete(player.UserId);
   if ((phase === 'vote' || phase === 'lobby') && joined.size() === 0) {
     vote = undefined;
     mode = undefined;
@@ -366,6 +385,10 @@ voteRemote.OnServerEvent.Connect((player, pick) => {
   if (pick !== math.floor(pick) || pick < 0 || pick >= vote.options.size()) return;
   vote.picks.set(player.UserId, pick);
   broadcastState();
+});
+
+chooseVehicleRemote.OnServerEvent.Connect((player, vehicle) => {
+  if (isVehicleId(vehicle)) vehiclePicks.set(player.UserId, vehicle);
 });
 
 const isNumber = (v: unknown): v is number => typeIs(v, 'number') && v === v;

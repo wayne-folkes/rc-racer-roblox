@@ -1,3 +1,5 @@
+import type { VehicleId } from './vehicles';
+
 // What the server and players' devices send each other. The server owns the race (AI cars, laps,
 // positions, results); each player's device drives that player's car and reports where it is.
 //
@@ -5,6 +7,7 @@
 //                               steer, vx, vz, y
 //   player → server  UseItem    (reliable): raceId, when the player fires or drops their item
 //   player → server  Vote       (reliable): the index of the option the player picks in a vote
+//   player → server  ChooseVehicle (reliable): the VehicleId the player picks, for their next race
 //   server → all     Snapshot   (unreliable, 20 Hz): server time, CAR_FIELDS numbers per racer,
 //                               then MISSILE_FIELDS numbers per missile in flight
 //   server → all     RaceState  (reliable, 4 Hz, on every phase change and after item events):
@@ -20,6 +23,7 @@ export const REMOTE = {
   raceState: 'RaceState',
   useItem: 'UseItem',
   vote: 'Vote',
+  chooseVehicle: 'ChooseVehicle',
   itemEvents: 'ItemEvents',
   records: 'Records',
 } as const;
@@ -63,6 +67,8 @@ export interface RacerView {
   gridSlot: number;
   /** The player driving this car, or 0 for an AI car. */
   userId: number;
+  /** The vehicle this car is, so everyone draws it as it's driven. */
+  vehicle: VehicleId;
 }
 
 export interface RaceStateMessage {

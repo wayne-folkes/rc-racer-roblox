@@ -39,7 +39,7 @@ export class RemoteCars {
     this.track = track;
     racers.forEach((r, i) => {
       if (i === myIndex) return;
-      const model = new CarModel(Color3.fromHex(r.color), r.name);
+      const model = new CarModel(Color3.fromHex(r.color), r.name, r.vehicle);
       model.setLabel(r.name);
       const start = gridPosition(track, r.gridSlot);
       this.cars.set(i, { model, shown: { ...start }, now: { ...start }, anchor: undefined });

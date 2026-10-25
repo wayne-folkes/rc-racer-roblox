@@ -1,4 +1,4 @@
-import { createCar, DEFAULT_TUNING, type CarState } from 'shared/carPhysics';
+import { createCar, type CarState } from 'shared/carPhysics';
 import { collideCars, collideWithWalls } from 'shared/collision';
 import { gridPosition, PLAYER_COLORS } from 'shared/grid';
 import { NO_INPUT, stepWithEffects } from 'shared/handling';
@@ -6,6 +6,7 @@ import { ItemSystem, type ItemEvent } from 'shared/items';
 import { buildRamps, updateHeight } from 'shared/jumps';
 import { CAR_FIELDS, NET_FOLDER, REMOTE, SEND_RATE, type RaceStateMessage, type RecordsMessage } from 'shared/protocol';
 import { gridStart, ROAD_TOP, trackById, TRACKS, trackPath, type TrackDef } from 'shared/tracks';
+import { DEFAULT_VEHICLE, VEHICLES, type VehicleId } from 'shared/vehicles';
 import { buildTrack } from './buildTrack';
 import { CarModel, type CarPose } from './carModel';
 import { DriveInput } from './driveInput';
@@ -16,6 +17,7 @@ import { MeteorShower } from './meteors';
 import { NetReadout } from './netReadout';
 import { RecordsPanel } from './recordsPanel';
 import { RemoteCars } from './remoteCars';
+import { VehiclePanel } from './vehiclePanel';
 import { VoteMenu } from './voteMenu';
 import { WeatherView } from './weather';
 
@@ -47,6 +49,7 @@ const raceStateRemote = net.WaitForChild(REMOTE.raceState) as RemoteEvent;
 const useItemRemote = net.WaitForChild(REMOTE.useItem) as RemoteEvent;
 const itemEventsRemote = net.WaitForChild(REMOTE.itemEvents) as RemoteEvent;
 const voteRemote = net.WaitForChild(REMOTE.vote) as RemoteEvent;
+const chooseVehicleRemote = net.WaitForChild(REMOTE.chooseVehicle) as RemoteEvent;
 const recordsRemote = net.WaitForChild(REMOTE.records) as RemoteEvent;
 const serverNow = () => game.Workspace.GetServerTimeNow();
 
@@ -102,7 +105,11 @@ function resetCar() {
 
 while (!game.Workspace.CurrentCamera) task.wait();
 const camera = new FollowCamera(game.Workspace.CurrentCamera);
-const model = new CarModel(Color3.fromHex(PLAYER_COLORS[0]), 'MyCar');
+/** The vehicle the player has picked, for their next race. */
+let picked: VehicleId = DEFAULT_VEHICLE;
+/** Our car's colour: the player's own in a race, the first player colour until then. */
+let myColor = Color3.fromHex(PLAYER_COLORS[0]);
+let model = new CarModel(myColor, 'MyCar', picked);
 const input = new DriveInput();
 const hud = new Hud();
 const others = new RemoteCars();
@@ -112,6 +119,10 @@ recordsRemote.OnClientEvent.Connect((message: RecordsMessage) => recordsPanel.se
 let itemViews = new ItemViews(track, def.layout, ramps);
 itemViews.setLayout(items);
 const voteMenu = new VoteMenu((pick) => voteRemote.FireServer(pick));
+const vehiclePanel = new VehiclePanel((vehicle) => {
+  picked = vehicle;
+  chooseVehicleRemote.FireServer(vehicle);
+});
 camera.snapTo(car);
 
 /** The track's weather and, on the Space Cup, meteors: purely for looks, re-seeded every race. */
@@ -174,7 +185,8 @@ raceStateRemote.OnClientEvent.Connect((message: RaceStateMessage) => {
     startEffects(message.raceId);
     if (myIndex >= 0) {
       placeCar(gridPosition(track, message.racers[myIndex].gridSlot));
-      model.setColor(Color3.fromHex(message.racers[myIndex].color));
+      myColor = Color3.fromHex(message.racers[myIndex].color);
+      model.setColor(myColor);
     }
   }
   itemViews.syncState(message.pickupsDown, message.bombs);
@@ -204,6 +216,9 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
   // On the grid until GO; after the line, the car rolls to a stop.
   const heldOnGrid = racing && phase === 'countdown';
   const finished = racing && state!.finishTimes[myIndex] >= 0;
+  // Our car is the vehicle the server put us in for this race, or the one we've picked outside a race.
+  const vehicle = racing ? state!.racers[myIndex].vehicle : picked;
+  const tuning = VEHICLES[vehicle].tuning;
 
   if (!heldOnGrid && input.consumeReset()) resetCar();
   if (input.consumeFire() && racing && phase === 'racing' && !finished) useItemRemote.FireServer(state!.raceId);
@@ -215,7 +230,7 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
   while (accumulator >= STEP) {
     prev = poseOf(car);
     if (!heldOnGrid) {
-      stepWithEffects(car, controls, STEP, DEFAULT_TUNING, items.status[0]);
+      stepWithEffects(car, controls, STEP, tuning, items.status[0]);
       // Bumps move only our car; the other car's device (or the server, for AI) moves theirs.
       if (racing) for (const [, other] of otherCars) collideCars(car, { ...other });
       const proj = collideWithWalls(car, track, STEP).proj;
@@ -232,6 +247,11 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
     carStateRemote.FireServer(state!.raceId, now, car.x, car.z, car.heading, car.steer, car.vx, car.vz, car.y);
   }
 
+  // A different vehicle for our car: build its model in place of the old one.
+  if (vehicle !== model.vehicle) {
+    model.destroy();
+    model = new CarModel(myColor, 'MyCar', vehicle);
+  }
   const pose = blend(prev, car, accumulator / STEP);
   model.place({ ...pose, y: pose.y + ROAD_TOP });
   itemViews.update(frameDt, now);
@@ -245,5 +265,6 @@ RunService.BindToRenderStep('Drive', Enum.RenderPriority.Camera.Value + 1, (fram
   hud.update(state, myIndex, now, def.name, recordsPanel.chaseLine(def.id), recordsPanel.newBestLine(def.id));
   recordsPanel.update(state, def.name);
   voteMenu.update(state);
+  vehiclePanel.update(state, picked);
   netReadout?.update(frameDt, state);
 });

@@ -10,6 +10,7 @@ import { buildRamps, updateHeight, type Ramp } from './jumps';
 import { NOT_FINISHED, Race, TOTAL_LAPS } from './race';
 import { buildRacingLine, type RacingLine } from './racingLine';
 import type { Projection, TrackPath } from './trackPath';
+import { DEFAULT_VEHICLE, VEHICLES, type VehicleId } from './vehicles';
 
 // One multiplayer race, without rendering or networking: what the server runs. It's rc-racer's
 // world.ts reshaped for several players: AI cars are stepped here, each player's car is whatever its
@@ -26,6 +27,8 @@ const AI_BOMB_LANE = 1.8;
 export interface Entrant {
   name: string;
   userId: number;
+  /** The vehicle the player picked. Missing means the buggy. */
+  vehicle?: VehicleId;
 }
 
 export interface SimRacer {
@@ -34,6 +37,8 @@ export interface SimRacer {
   gridSlot: number;
   /** The player driving this car, or 0 for an AI car. */
   userId: number;
+  /** AI cars are always the buggy. */
+  vehicle: VehicleId;
   car: CarState;
   /** Set for an AI car, including a player's car the AI took over when they left. */
   driver: AiDriver | undefined;
@@ -75,6 +80,7 @@ export class RaceSim {
           color: PLAYER_COLORS[n],
           gridSlot: playerSlot(n),
           userId: p.userId,
+          vehicle: p.vehicle ?? DEFAULT_VEHICLE,
           car: gridPosition(track, slot),
           driver: undefined,
         });
@@ -85,6 +91,7 @@ export class RaceSim {
           color: ai.color,
           gridSlot: slot,
           userId: 0,
+          vehicle: DEFAULT_VEHICLE,
           car: gridPosition(track, slot),
           driver: new AiDriver(track, this.line, ai.skill, DEFAULT_TUNING),
         });
@@ -127,7 +134,8 @@ export class RaceSim {
     const racer = this.racers[index];
     racer.userId = 0;
     racer.name = `${racer.name} (AI)`;
-    racer.driver = new AiDriver(this.track, this.line, STAND_IN_SKILL, DEFAULT_TUNING);
+    // The stand-in drives the car as its vehicle, so a truck stays a truck.
+    racer.driver = new AiDriver(this.track, this.line, STAND_IN_SKILL, VEHICLES[racer.vehicle].tuning);
   }
 
   /** Returns and clears the item events since the last call, to send to every player. */

@@ -7,6 +7,7 @@ import type { ItemEvent } from '../src/shared/items';
 import { NOT_FINISHED } from '../src/shared/race';
 import { RaceSim } from '../src/shared/raceSim';
 import { MEADOW_LOOP, trackPath } from '../src/shared/tracks';
+import { VEHICLES } from '../src/shared/vehicles';
 
 const STEP = 1 / 120;
 const track = trackPath(MEADOW_LOOP);
@@ -197,4 +198,25 @@ test('using an item with nothing held does nothing', () => {
   sim.useItem(sim.indexOf(100));
   sim.step(1 / 120);
   expect(sim.drainEvents().filter((e) => e.type === 'fire' || e.type === 'drop')).toEqual([]);
+});
+
+test("a player's picked vehicle reaches their racer; AI cars and players who pick none are buggies", () => {
+  const sim = new RaceSim(track, [
+    { name: 'Truck', userId: 100, vehicle: 'truck' },
+    { name: 'Plain', userId: 101 },
+  ]);
+  expect(sim.racers[sim.indexOf(100)].vehicle).toBe('truck');
+  expect(sim.racers[sim.indexOf(101)].vehicle).toBe('buggy');
+  for (const r of sim.racers) if (r.userId === 0) expect(r.vehicle).toBe('buggy');
+});
+
+test("a stand-in drives a truck with the truck's tuning, not the buggy's", () => {
+  const sim = new RaceSim(track, [{ name: 'Truck', userId: 100, vehicle: 'truck' }]);
+  const index = sim.indexOf(100);
+  sim.standIn(index);
+  const { tuning } = sim.racers[index].driver!;
+  expect(tuning.slickGrip).toBe(VEHICLES.truck.tuning.slickGrip);
+  expect(tuning.puddleDrag).toBe(VEHICLES.truck.tuning.puddleDrag);
+  expect(tuning.slickGrip).not.toBe(DEFAULT_TUNING.slickGrip);
+  expect(tuning.puddleDrag).not.toBe(DEFAULT_TUNING.puddleDrag);
 });

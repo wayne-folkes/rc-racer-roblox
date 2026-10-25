@@ -55,6 +55,7 @@ allow links off the platform. Edit `design/icon.html` or `design/thumbnail.html`
 | Best times | ✅ in Node: bests only improve, the top 10 keeps one line per player and goes to whoever set a tie first. ✅ in Studio (2026-10-24): times save to and load from the data stores, a rejoining player gets their bests and the top 10, and a 3-lap race saved its race time and best lap on finishing |
 | Multiplayer on real phones | ✅ (2026-10-24) three iPhones raced a Space Cup together over 5G on a train and it played well: 60 fps, 37 ms ping, snapshots at 20/s with the longest arrival gap 0.13 s. Home wifi was worse than 5G (69 ms ping, gaps up to 0.68 s) |
 | Opens in Studio and drives round Meadow Loop | ✅ (2026-10-23) the track builds with no gaps on the bends, the car drives round it, and the camera matches the web game's view |
+| Vehicles in Studio | Partly (2026-10-24, one player): the panel shows during the vote above the controls hint, V switches to the truck, and the next race puts us in the truck, which drives, picks up items and reports at 20/s. Still to check: another player seeing the truck, a stand-in driving one, and the panel on a phone |
 
 Controls feel good with keyboard, gamepad and touch (Studio's device emulator, one finger at a time),
 and the view works on phone and console screens. Still to check: frame rate (Shift+F5 in Studio),
@@ -132,6 +133,10 @@ Friends in the same server race each other, with AI cars filling the grid.
 - **Tracks** (`shared/tracks.ts`, `shared/spaceTracks.ts`): all eight of the web's tracks, each
   either way round, ported with their item layouts and themes. Every device builds the track the
   server names, and rebuilds when it changes.
+- **Vehicles** (`shared/vehicles.ts`, `client/carModel.ts`, `client/vehiclePanel.ts`): the buggy and
+  the web game's Monster Truck. Players pick one between races, from a panel (click or tap, V, or a
+  gamepad's D-pad during the vote); the server puts each player in the race with their pick. For now
+  anyone can pick either, and truck times aren't saved (see `docs/progression.md`).
 - **Who runs what:** the server runs the race (`shared/raceSim.ts`: AI driving, laps, positions,
   results) at 120 Hz. Each player's device drives that player's car, so it answers the controls
   instantly, and reports it 20 times a second. The server sends every car's position 20 times a
