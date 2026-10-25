@@ -1,16 +1,33 @@
 import { DEMO_LAYOUT, hazardZones, pickupRow, type TrackLayout, type TrackSpot } from './items';
 import { RAMP_LENGTH, type RampSpec } from './jumps';
+import { CITY_TRACKS } from './cityTracks';
 import { SPACE_TRACKS } from './spaceTracks';
+import { TOYBOX_TRACKS } from './toyboxTracks';
 import { DEMO_TRACK, TrackPath, type Point } from './trackPath';
 
 // The season's tracks, in race order. Each must pass tracks.test.ts: no corner tighter than the
 // road is wide, hazards only where the racing line is steady enough to steer round them, and a
 // full AI race with nobody getting stuck.
 
-export type Scenery = 'trees' | 'cacti' | 'pines' | 'craters' | 'mesas' | 'volcanoes' | 'ice';
+export type Scenery =
+  | 'trees'
+  | 'cacti'
+  | 'pines'
+  | 'craters'
+  | 'mesas'
+  | 'volcanoes'
+  | 'ice'
+  | 'toys'
+  | 'pantry'
+  | 'sandcastles'
+  | 'workshop'
+  | 'skyscrapers'
+  | 'rooftop'
+  | 'containers'
+  | 'streetlights';
 /** Ambient effects drawn over the track. Purely visual: they don't touch the cars. */
-export type Weather = 'snow' | 'tumbleweeds' | 'dust' | 'embers' | 'glitter';
-export type PondStyle = 'water' | 'lava';
+export type Weather = 'snow' | 'tumbleweeds' | 'dust' | 'embers' | 'glitter' | 'rain';
+export type PondStyle = 'water' | 'lava' | 'milk' | 'oil';
 
 export interface TrackTheme {
   sky: string;
@@ -22,6 +39,8 @@ export interface TrackTheme {
   weather?: Weather;
   /** Meteors now and then hit the ground beside the track and leave craters. */
   meteors?: boolean;
+  /** Raced at night: dim moonlight, so the scenery's neon and lamps glow. */
+  night?: boolean;
 }
 
 export interface TrackDef {
@@ -152,8 +171,8 @@ export function reverseTrack(def: TrackDef): TrackDef {
   };
 }
 
-export type CircuitId = 'classic' | 'space';
-export const CIRCUIT_IDS: CircuitId[] = ['classic', 'space'];
+export type CircuitId = 'classic' | 'space' | 'toybox' | 'city';
+export const CIRCUIT_IDS: CircuitId[] = ['classic', 'space', 'toybox', 'city'];
 export const DEFAULT_CIRCUIT: CircuitId = 'classic';
 
 export interface Circuit {
@@ -166,6 +185,8 @@ export interface Circuit {
 export const CIRCUITS: Record<CircuitId, Circuit> = {
   classic: { name: 'Classic Cup', blurb: 'Meadow, desert, lakeside and snow.', tracks: TRACKS },
   space: { name: 'Space Cup', blurb: 'The Moon, Mars, Io and Europa.', tracks: SPACE_TRACKS },
+  toybox: { name: 'Toybox Cup', blurb: 'Round the house: bedroom, kitchen, sandbox and garage.', tracks: TOYBOX_TRACKS },
+  city: { name: 'City Cup', blurb: 'Through town at night: downtown, rooftops, docks and freeway.', tracks: CITY_TRACKS },
 };
 
 export function isCircuitId(value: unknown): value is CircuitId {

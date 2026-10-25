@@ -45,10 +45,10 @@ allow links off the platform. Edit `design/icon.html` or `design/thumbnail.html`
 | Ported items and ramps match the web game | ✅ in Node: the hazard dice give exactly the web game's numbers, item boxes, boost pads and ramps land within 2e-13, and a 60-second AI race with items ends within 3e-13 with the same pickups, missiles, bombs, hits and jumps |
 | Items in a multiplayer race | ✅ in Node: in a 2-player race, AI and players pick up items, fire missiles and drop bombs, and hits land on AI and players alike (15 pickups, 6 missiles, 9 bombs, 11 hits, 5 on players) |
 | Items in Studio | Partly: item boxes, boost pads, puddles and oil seen (2026-10-23); firing, hits and jumps not yet confirmed |
-| All tracks match the web game | ✅ in Node: all 16 (8 tracks, both ways) have the web's control points, layouts and themes exactly, and their splines agree to within 7e-13 |
-| Every track races | ✅ in Node: a full 3-lap race with items finishes on all 16 with no AI car stuck (73 s on Meadow Loop to 137 s on Olympus Rally reversed) |
+| All tracks match the web game | ✅ in Node: all 32 (16 tracks, both ways) have the web's control points, layouts and themes exactly, and their splines agree to within 7e-13 |
+| Every track races | ✅ in Node: a full 3-lap race with items finishes on all 32 with no AI car stuck (73 s on Meadow Loop to 137 s on Olympus Rally reversed) |
 | Cups and votes | ✅ in Node: vote options, counting, random tie-breaks, and cup points and standings |
-| Scenery and meteors match the web game | ✅ in Node: scenery plans keep clear of the road on all 16 tracks (and matched the web's placement exactly in a one-off comparison); meteor timings, landings and crater limits follow the web's |
+| Scenery and meteors match the web game | ✅ in Node: scenery plans keep clear of the road on all 32 tracks (and matched the web's placement exactly in one-off comparisons, the second covering the Toybox and City cups' 2,348 objects); meteor timings, landings and crater limits follow the web's |
 | Cups, votes, other tracks, scenery and weather in Studio | ⏳ not yet checked |
 | Multiplayer in Studio | ✅ (2026-10-23) a 2-player test races the AI and bumps feel right, after drawing other cars where they really are rather than easing behind them |
 | Other cars on a real phone | ✅ (2026-10-24) smooth on the published place, after carrying cars round the track through the phone's 0.68 s gaps in snapshots on home wifi |
@@ -122,16 +122,19 @@ Friends in the same server race each other, with AI cars filling the grid.
   player starts at the back; AI cars (`shared/grid.ts`) fill the rest from pole. A seventh player
   watches until a slot is free.
 - **Cups and quick races** (`shared/cup.ts`, `server/main.server.ts`): between races, players vote
-  for the Classic Cup, the Space Cup, or a quick race on one of two random tracks (any of the eight,
+  for the Classic, Space, Toybox or City Cup, or a quick race on one of two random tracks (any of the 16,
   either way round); most votes wins, and a tie or no votes is settled at random. A cup is four
   races scored 15-12-10-8-6-4 for 1st to 6th, AI cars included, as in Mario Kart; level points go
   to the best single finish. The first vote lasts 20 seconds, later ones 15; between a cup's races
   there's a 10-second lobby. Each race is 3-2-1, three laps, then results (with the cup standings)
   for 10 seconds, 15 after a cup's last race. Once the first player finishes, the rest have 30
   seconds. Between races you can drive anywhere; anyone who joins mid-race watches the leader and
-  joins a cup with no points. Vote by clicking or tapping, with 1–4, or with a gamepad's D-pad and A.
-- **Tracks** (`shared/tracks.ts`, `shared/spaceTracks.ts`): all eight of the web's tracks, each
-  either way round, ported with their item layouts and themes. Every device builds the track the
+  joins a cup with no points. Vote by clicking or tapping, with 1–6, or with a gamepad's D-pad and A.
+- **Tracks** (`shared/tracks.ts`, `shared/spaceTracks.ts`, `shared/toyboxTracks.ts`,
+  `shared/cityTracks.ts`): all 16 of the web's tracks, each either way round, ported with their item
+  layouts and themes. The Toybox and City cups (2026-10-24) were designed in the web game first and
+  copied across unchanged. The City Cup races at night (`client/lighting.ts`: midnight clock, dim
+  blue ambient), so its neon and lamps stand out. Every device builds the track the
   server names, and rebuilds when it changes.
 - **Vehicles** (`shared/vehicles.ts`, `client/carModel.ts`, `client/vehiclePanel.ts`): the buggy and
   the web game's Monster Truck. Players pick one between races, from a panel (click or tap, V, or a
@@ -208,11 +211,12 @@ Friends in the same server race each other, with AI cars filling the grid.
    chevron arrows, each a ">" of two bars; oil and puddles are the web's seeded blobs, each a fan
    of triangles built from pairs of WedgeParts (Roblox has no polygon Part).
 3. ~~**Other tracks, cups, voting, scenery, weather**~~: done. Each theme's scenery
-   (`client/scenery.ts`: trees, cacti, pines, craters, mesas, volcanoes, ice and cracks, plus water
-   and lava ponds) lands exactly where the web's does (checked in Node against the web's own
-   placement on all 16 tracks), built from Parts: cones are stacks of three cylinders, rocks are
+   (`client/scenery.ts`: trees, cacti, pines, craters, mesas, volcanoes, ice and cracks; toys, pantry,
+   sandcastles and workshop for the Toybox Cup; skyscrapers, rooftops, containers and street lights for
+   the City Cup; plus water, lava, milk and oil ponds) lands exactly where the web's does (checked in Node against the web's own
+   placement on all 32 tracks), built from Parts: cones are stacks of three cylinders, rocks are
    squashed spheres, at most 1,200 Parts a track. Weather (`client/weather.ts`: snow, dust,
-   embers and glitter as ParticleEmitters following the camera, tumbleweeds as rolling Parts) and
+   embers, glitter and rain as ParticleEmitters following the camera, rain stretched into streaks, tumbleweeds as rolling Parts) and
    the Space Cup's meteors (`client/meteors.ts`: streak, flash, shockwave, rocks and a crater, at
    most 12 craters kept) follow the web's timings and seeded randomness; they're purely for looks.
    Water ponds use the puddles' look rather than the web's plain pond colour. The web's

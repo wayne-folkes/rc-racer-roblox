@@ -2,7 +2,7 @@ import { part, PartModel } from './itemModels';
 import { seededRandom } from '../shared/items';
 import type { Weather } from '../shared/tracks';
 
-// Ambient weather over the track: snow, dust, embers or ice glitter drifting around the car, or
+// Ambient weather over the track: snow, dust, embers, ice glitter or rain drifting around the car, or
 // tumbleweeds rolling across the wind. Purely visual: nothing here reads or changes the cars or the race.
 //
 // The web draws the flurries as points in a box that rolls with the car. Here each flurry is a
@@ -48,6 +48,8 @@ interface Flurry {
   rim: string;
   /** Spin (deg/s) either way. */
   spin: number;
+  /** Stretches each particle along its fall into a streak (the emitter's Squash, up to 3). Rain only. */
+  streak?: number;
 }
 
 const FLURRIES: Record<Exclude<Weather, 'tumbleweeds'>, Flurry> = {
@@ -110,6 +112,22 @@ const FLURRIES: Record<Exclude<Weather, 'tumbleweeds'>, Flurry> = {
     core: '#ffffff',
     rim: '#78c8ff',
     spin: 120,
+  },
+  // Fast, fine drops streaking down through the City Cup's night. They live just long enough to fall the box's height.
+  rain: {
+    count: 2200,
+    speed: [16, 22],
+    life: [1.3, 1.9],
+    drift: 1.5,
+    direction: 'Bottom',
+    size: 0.12,
+    opacity: 0.6,
+    light: 0.2,
+    texture: SMOKE,
+    core: '#d2e1ff',
+    rim: '#82a0d2',
+    spin: 0,
+    streak: 2.5,
   },
 };
 
@@ -224,6 +242,13 @@ function createFlurry(parent: Instance, flurry: Flurry, wind: Vec2): Part {
   emitter.Texture = flurry.texture;
   emitter.Rotation = new NumberRange(0, 360);
   emitter.RotSpeed = new NumberRange(-flurry.spin, flurry.spin);
+  // A streak points along its velocity, so it falls straight down its own length and isn't turned off it.
+  if (flurry.streak !== undefined) {
+    emitter.Orientation = Enum.ParticleOrientation.VelocityParallel;
+    emitter.Squash = new NumberSequence(flurry.streak);
+    emitter.Rotation = new NumberRange(0);
+    emitter.SpreadAngle = new Vector2(5, 5);
+  }
   // A gentle push on the falling and rising kinds, so they drift with the wind. Dust is already moving along it.
   if (flurry.direction !== 'Front') {
     emitter.Acceleration = new Vector3(wind.x * flurry.drift * 0.2, 0, wind.z * flurry.drift * 0.2);

@@ -37,6 +37,45 @@ const WEB_CAPS: Record<Scenery, [string[], number][]> = {
     [['spires'], 60],
     [['crack'], 88],
   ],
+  toys: [
+    [['block'], 140],
+    [['books'], 24],
+    [['toyBall'], 24],
+  ],
+  pantry: [
+    [['cereal'], 40],
+    [['tin'], 90],
+    [['fruit'], 50],
+  ],
+  sandcastles: [
+    [['castle'], 20],
+    [['bucket'], 50],
+    [['spade'], 40],
+  ],
+  workshop: [
+    [['tyres'], 50],
+    [['paint'], 70],
+    [['toolbox'], 20],
+  ],
+  skyscrapers: [
+    [['tower'], 50],
+    [['billboard'], 24],
+  ],
+  rooftop: [
+    [['airCon'], 80],
+    [['tank'], 20],
+    [['aerial'], 36],
+  ],
+  containers: [
+    [['container'], 44],
+    [['crate', 'bollard'], 70],
+    [['lamp'], 24],
+  ],
+  streetlights: [
+    [['streetLight'], 60],
+    [['sign'], 14],
+    [['bush'], 110],
+  ],
 };
 
 const plans = ALL_TRACKS.map((def: TrackDef) => {

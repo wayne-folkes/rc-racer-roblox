@@ -6,7 +6,7 @@ import * as port from '../src/shared/tracks';
 import * as portTrackPath from '../src/shared/trackPath';
 
 // The ported track list against the web game's. Every track is compared both ways round (ALL_TRACKS holds
-// the eight tracks forwards and reversed), and the spline each track is driven on is compared point by point.
+// the sixteen tracks forwards and reversed), and the spline each track is driven on is compared point by point.
 
 /** Numbers in a layout or theme may differ by this much; everything else must match exactly. */
 const LAYOUT_TOL = 1e-12;
@@ -57,7 +57,7 @@ function deepClose(actual: unknown, expected: unknown, path: string): number {
 }
 
 test('ALL_TRACKS lists the same tracks as the web, in the same order', () => {
-  expect(web.ALL_TRACKS.length).toBe(16);
+  expect(web.ALL_TRACKS.length).toBe(32);
   expect(port.ALL_TRACKS.map((t) => t.id)).toEqual(web.ALL_TRACKS.map((t) => t.id));
 });
 
@@ -96,7 +96,7 @@ web.ALL_TRACKS.forEach((w, i) => {
   });
 });
 
-test('the classic and space cups list the same names, blurbs and tracks as the web', () => {
+test('every cup lists the same name, blurb and tracks as the web', () => {
   expect(port.CIRCUIT_IDS).toEqual(web.CIRCUIT_IDS);
   expect(port.DEFAULT_CIRCUIT).toBe(web.DEFAULT_CIRCUIT);
   for (const id of web.CIRCUIT_IDS) {
@@ -111,8 +111,8 @@ test('the classic and space cups list the same names, blurbs and tracks as the w
   }
 });
 
-test('isCircuitId accepts the two cups and nothing else, as the web does', () => {
-  const values: unknown[] = ['classic', 'space', 'desert', '', 'Classic', 1, undefined, null, {}];
+test('isCircuitId accepts the four cups and nothing else, as the web does', () => {
+  const values: unknown[] = ['classic', 'space', 'toybox', 'city', 'desert', '', 'Classic', 1, undefined, null, {}];
   for (const v of values) expect(port.isCircuitId(v)).toBe(web.isCircuitId(v));
   expect(port.isCircuitId('classic')).toBe(true);
   expect(port.isCircuitId('space')).toBe(true);

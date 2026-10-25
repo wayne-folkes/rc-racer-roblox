@@ -1,9 +1,10 @@
 import type { TrackPath } from 'shared/trackPath';
 import { ROAD_TOP, type TrackDef } from 'shared/tracks';
+import { setLighting } from './lighting';
 import { buildScenery } from './scenery';
 
 // Builds a track out of Parts from its centreline: a ground plane, the road, striped kerbs, low
-// walls, a start line and the theme's scenery (scenery.ts). rc-racer's trackScene.ts builds the
+// walls, a start line and the theme's scenery (scenery.ts), and sets the day or night lighting. rc-racer's trackScene.ts builds the
 // same strips as triangle ribbons; here each centreline segment gets one box per strip, a little
 // longer than the segment so curves don't show gaps.
 //
@@ -121,6 +122,8 @@ export function buildTrack(track: TrackPath, def: TrackDef): Folder {
   scenery.Name = 'Scenery';
   buildScenery(track, def.theme, scenery);
   scenery.Parent = folder;
+
+  setLighting(def.theme.night === true);
 
   folder.Parent = game.Workspace;
   return folder;

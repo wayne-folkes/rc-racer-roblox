@@ -17,7 +17,7 @@ import { trackById, TRACKS, trackPath, type CircuitId, type TrackDef } from 'sha
 import { DEFAULT_VEHICLE, isVehicleId, VEHICLE_IDS, VEHICLES, type VehicleId } from 'shared/vehicles';
 import { RecordBook } from './records';
 
-// Runs the races. Players vote between the two cups and two quick races; a cup is four races with
+// Runs the races. Players vote between the four cups and two quick races; a cup is four races with
 // points for every place (shared/cup.ts), a quick race is one. Each race has AI filling the grid
 // slots players don't take, then results, and on to the next race of the cup or the next vote.
 // Everyone in the server when a race starts races (up to GRID_SIZE); anyone who joins later watches

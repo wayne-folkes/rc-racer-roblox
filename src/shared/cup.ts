@@ -17,7 +17,7 @@ export interface VoteOption {
 /** Quick races on offer in each vote. */
 const QUICK_CHOICES = 2;
 
-/** Both cups, then quick races on `QUICK_CHOICES` different random tracks, either way round. */
+/** Every cup, then quick races on `QUICK_CHOICES` different random tracks, either way round. */
 export function voteOptions(rand: () => number): VoteOption[] {
   const options: VoteOption[] = [];
   for (const id of CIRCUIT_IDS) options.push({ kind: 'cup', id, label: CIRCUITS[id].name });

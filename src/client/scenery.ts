@@ -33,7 +33,24 @@ const TIERS = 3;
 const LEAF_COUNT = 3;
 
 /** How far each scattered kind reaches from its centre, which its clearance from the road adds to. */
-export const SCATTER_REACH: Record<string, number> = { crater: 4.5, mesa: 4.5, volcano: 6, spikes: 1, spires: 1 };
+export const SCATTER_REACH: Record<string, number> = {
+  crater: 4.5,
+  mesa: 4.5,
+  volcano: 6,
+  spikes: 1,
+  spires: 1,
+  books: 2,
+  toyBall: 1,
+  cereal: 1.3,
+  castle: 3,
+  toolbox: 1,
+  tower: 4,
+  billboard: 1.3,
+  tank: 1.4,
+  container: 3.4,
+  streetLight: 1.4,
+  sign: 1.6,
+};
 
 /** Flat pieces are this thick. Their centres sit at these heights, so no two that overlap share a surface. */
 const FLAT = 0.02;
@@ -64,6 +81,14 @@ interface Spire {
   tiltZ: number;
 }
 
+interface Book {
+  width: number;
+  depth: number;
+  height: number;
+  color: string;
+  turn: number;
+}
+
 /** What a scenery object is, with the draws that set its size, colour and shape. */
 export type Shape =
   | { kind: 'tree'; scale: number; leaf: number }
@@ -78,6 +103,30 @@ export type Shape =
   | { kind: 'spikes'; spikes: Spike[] }
   | { kind: 'spires'; spires: Spire[] }
   | { kind: 'crack'; length: number }
+  | { kind: 'block'; size: number; color: string; top?: { color: string; turn: number } }
+  | { kind: 'books'; books: Book[] }
+  | { kind: 'toyBall'; radius: number; color: string }
+  | { kind: 'cereal'; width: number; depth: number; height: number; color: string }
+  | { kind: 'tin'; radius: number; height: number; label: string }
+  | { kind: 'fruit'; radius: number; color: string }
+  | { kind: 'castle'; scale: number }
+  | { kind: 'bucket'; color: string }
+  | { kind: 'spade'; color: string }
+  | { kind: 'tyres'; count: number }
+  | { kind: 'paint'; height: number; lid: string }
+  | { kind: 'toolbox' }
+  | { kind: 'tower'; width: number; depth: number; height: number; color: string; neon: string }
+  | { kind: 'billboard'; color: string }
+  | { kind: 'airCon'; width: number }
+  | { kind: 'tank' }
+  | { kind: 'aerial'; height: number }
+  | { kind: 'container'; color: string; top?: { color: string; turn: number } }
+  | { kind: 'bollard' }
+  | { kind: 'crate'; scale: number }
+  | { kind: 'lamp' }
+  | { kind: 'streetLight' }
+  | { kind: 'sign' }
+  | { kind: 'bush'; scale: number }
   | { kind: 'pond'; style: PondStyle; radius: number; jitter: number[] };
 
 /** A piece of scenery on the ground. `rotation` turns it about the vertical axis, as the web's rotation.y does. */
@@ -165,6 +214,11 @@ function scatter(track: TrackPath, rand: Rand, count: number, reach: number, mak
 
 function append(into: SceneryObject[], more: SceneryObject[]): void {
   for (const object of more) into.push(object);
+}
+
+/** A colour from a list, with one draw, as the web's pick does. */
+function pick(rand: Rand, list: string[]): string {
+  return list[math.floor(rand() * list.size())];
 }
 
 function planTrees(track: TrackPath, rand: Rand): SceneryObject[] {
@@ -310,6 +364,181 @@ function planCracks(track: TrackPath, rand: Rand): SceneryObject[] {
   return out;
 }
 
+/** Bedroom: building blocks, some stacked two high, piles of books and the odd ball. */
+function planToys(track: TrackPath, rand: Rand): SceneryObject[] {
+  const out = scatter(track, rand, 140, 0, () => {
+    const size = 0.8 + rand() * 0.8;
+    const color = pick(rand, COLOR.toys);
+    if (rand() < 0.3) {
+      const topColor = pick(rand, COLOR.toys);
+      const turn = rand() * (math.pi / 2);
+      return { shape: { kind: 'block', size, color, top: { color: topColor, turn } }, footprint: 0 };
+    }
+    return { shape: { kind: 'block', size, color }, footprint: 0 };
+  });
+  append(
+    out,
+    scatter(track, rand, 24, SCATTER_REACH.books, () => {
+      const n = 2 + math.floor(rand() * 3);
+      const books: Book[] = [];
+      for (let i = 0; i < n; i++) {
+        const width = 2.4 + rand() * 0.8;
+        const depth = 1.7 + rand() * 0.5;
+        const height = 0.3 + rand() * 0.2;
+        const color = pick(rand, COLOR.books);
+        const turn = (rand() - 0.5) * 0.5;
+        books.push({ width, depth, height, color, turn });
+      }
+      return { shape: { kind: 'books', books }, footprint: 0 };
+    }),
+  );
+  append(
+    out,
+    scatter(track, rand, 24, SCATTER_REACH.toyBall, () => {
+      const radius = 0.6 + rand() * 0.6;
+      return { shape: { kind: 'toyBall', radius, color: pick(rand, COLOR.toys) }, footprint: 0 };
+    }),
+  );
+  return out;
+}
+
+/** Kitchen: cereal boxes, tins and fruit dropped on the floor. */
+function planPantry(track: TrackPath, rand: Rand): SceneryObject[] {
+  const out = scatter(track, rand, 40, SCATTER_REACH.cereal, () => {
+    const width = 1.6 + rand() * 0.6;
+    const depth = 0.6 + rand() * 0.2;
+    const height = 2.2 + rand() * 0.8;
+    return { shape: { kind: 'cereal', width, depth, height, color: pick(rand, COLOR.packets) }, footprint: 0 };
+  });
+  append(
+    out,
+    scatter(track, rand, 90, 0, () => {
+      const radius = 0.35 + rand() * 0.2;
+      const height = 0.8 + rand() * 0.6;
+      return { shape: { kind: 'tin', radius, height, label: pick(rand, COLOR.labels) }, footprint: 0 };
+    }),
+  );
+  append(
+    out,
+    scatter(track, rand, 50, 0, () => {
+      const radius = 0.35 + rand() * 0.2;
+      return { shape: { kind: 'fruit', radius, color: pick(rand, COLOR.fruit) }, footprint: 0 };
+    }),
+  );
+  return out;
+}
+
+/** Sandbox: sandcastles with a tower at each corner, and buckets and spades left lying about. */
+function planSandcastles(track: TrackPath, rand: Rand): SceneryObject[] {
+  const out = scatter(track, rand, 20, SCATTER_REACH.castle, () => {
+    const scale = 0.9 + rand() * 0.5;
+    return { shape: { kind: 'castle', scale }, footprint: 0 };
+  });
+  append(
+    out,
+    scatter(track, rand, 50, 0, () => ({ shape: { kind: 'bucket', color: pick(rand, COLOR.toys) }, footprint: 0 })),
+  );
+  append(
+    out,
+    scatter(track, rand, 40, 0, () => ({ shape: { kind: 'spade', color: pick(rand, COLOR.toys) }, footprint: 0 })),
+  );
+  return out;
+}
+
+/** Garage: stacks of tyres, paint tins and red toolboxes. */
+function planWorkshop(track: TrackPath, rand: Rand): SceneryObject[] {
+  const out = scatter(track, rand, 50, 0, () => {
+    const count = 1 + math.floor(rand() * 3);
+    return { shape: { kind: 'tyres', count }, footprint: 0 };
+  });
+  append(
+    out,
+    scatter(track, rand, 70, 0, () => {
+      const height = 0.7 + rand() * 0.3;
+      return { shape: { kind: 'paint', height, lid: pick(rand, COLOR.toys) }, footprint: 0 };
+    }),
+  );
+  append(out, scatter(track, rand, 20, SCATTER_REACH.toolbox, () => ({ shape: { kind: 'toolbox' }, footprint: 0 })));
+  return out;
+}
+
+/** Downtown: dark towers ringed with neon bands, and neon billboards on poles. */
+function planSkyscrapers(track: TrackPath, rand: Rand): SceneryObject[] {
+  const out = scatter(track, rand, 50, SCATTER_REACH.tower, () => {
+    const width = 3 + rand() * 2.5;
+    const depth = 3 + rand() * 2.5;
+    const height = 4 + rand() * 6;
+    const color = pick(rand, COLOR.towers);
+    const neon = pick(rand, COLOR.neon);
+    return { shape: { kind: 'tower', width, depth, height, color, neon }, footprint: 0 };
+  });
+  append(
+    out,
+    scatter(track, rand, 24, SCATTER_REACH.billboard, () => ({
+      shape: { kind: 'billboard', color: pick(rand, COLOR.neon) },
+      footprint: 0,
+    })),
+  );
+  return out;
+}
+
+/** Rooftops: air-conditioning units, water tanks on legs, and aerials with a red light on top. */
+function planRooftop(track: TrackPath, rand: Rand): SceneryObject[] {
+  const out = scatter(track, rand, 80, 0, () => {
+    const width = 1.2 + rand() * 0.6;
+    return { shape: { kind: 'airCon', width }, footprint: 0 };
+  });
+  append(out, scatter(track, rand, 20, SCATTER_REACH.tank, () => ({ shape: { kind: 'tank' }, footprint: 0 })));
+  append(
+    out,
+    scatter(track, rand, 36, 0, () => {
+      const height = 3 + rand() * 2;
+      return { shape: { kind: 'aerial', height }, footprint: 0 };
+    }),
+  );
+  return out;
+}
+
+/** Docks: shipping containers, some stacked two high, wooden crates and the odd bollard, and lamps along the quay. */
+function planContainers(track: TrackPath, rand: Rand): SceneryObject[] {
+  const out = scatter(track, rand, 44, SCATTER_REACH.container, () => {
+    const color = pick(rand, COLOR.containers);
+    if (rand() < 0.35) {
+      const topColor = pick(rand, COLOR.containers);
+      const turn = (rand() - 0.5) * 0.2;
+      return { shape: { kind: 'container', color, top: { color: topColor, turn } }, footprint: 0 };
+    }
+    return { shape: { kind: 'container', color }, footprint: 0 };
+  });
+  append(
+    out,
+    scatter(track, rand, 70, 0, () => {
+      if (rand() < 0.15) return { shape: { kind: 'bollard' }, footprint: 0 };
+      const scale = 0.9 + rand() * 0.5;
+      return { shape: { kind: 'crate', scale }, footprint: 0 };
+    }),
+  );
+  append(out, scatter(track, rand, 24, 0, () => ({ shape: { kind: 'lamp' }, footprint: 0 })));
+  return out;
+}
+
+/** Freeway: street lights with a glowing head, green road signs, and dark bushes on the verge. */
+function planStreetlights(track: TrackPath, rand: Rand): SceneryObject[] {
+  const out = scatter(track, rand, 60, SCATTER_REACH.streetLight, () => ({
+    shape: { kind: 'streetLight' },
+    footprint: 0,
+  }));
+  append(out, scatter(track, rand, 14, SCATTER_REACH.sign, () => ({ shape: { kind: 'sign' }, footprint: 0 })));
+  append(
+    out,
+    scatter(track, rand, 110, 0, () => {
+      const scale = 0.6 + rand() * 0.8;
+      return { shape: { kind: 'bush', scale }, footprint: 0 };
+    }),
+  );
+  return out;
+}
+
 /** Flat, irregular pools, light blue or glowing lava: some in the infield, some outside the loop. */
 function planPonds(track: TrackPath, rand: Rand, style: PondStyle): SceneryObject[] {
   const box = sceneryBox(track);
@@ -349,6 +578,14 @@ const PLANNERS: Record<Scenery, Planner> = {
   mesas: planMesas,
   volcanoes: planVolcanoes,
   ice: planIce,
+  toys: planToys,
+  pantry: planPantry,
+  sandcastles: planSandcastles,
+  workshop: planWorkshop,
+  skyscrapers: planSkyscrapers,
+  rooftop: planRooftop,
+  containers: planContainers,
+  streetlights: planStreetlights,
 };
 
 /** The theme's scenery, then its ponds if the theme has them. Deterministic, so a track looks the same every load. */
@@ -384,7 +621,61 @@ const COLOR = {
   puddleRim: '#e6f7ff',
   puddlePool: '#5fb8e6',
   lava: '#ff6a1a',
+  // Bedroom and garage: the toy colours are shared, and the books and their stacks have their own.
+  toys: ['#e53b3b', '#f2c12e', '#3b7be5', '#3bb54a', '#f08a24'],
+  books: ['#8c2f39', '#2f5d8c', '#3c7a4a', '#c9a227', '#6b3fa0', '#d9d2c3'],
+  // Kitchen.
+  packets: ['#e8b531', '#d9443a', '#3f7fd1', '#5aa64a'],
+  labels: ['#d9443a', '#3f7fd1', '#f2c12e', '#3bb54a', '#ffffff'],
+  fruit: ['#e0301e', '#f5a623', '#9bc53d'],
+  tinCan: '#c9ced4',
+  cerealPanel: '#fff6e0',
+  // Sandbox.
+  sand: '#d6b878',
+  sandTower: '#ccab68',
+  // Garage.
+  tyre: '#1f1f24',
+  hub: '#6a6d75',
+  paintTin: '#b9bec4',
+  toolbox: '#c8302c',
+  toolHandle: '#2a2a2e',
+  // Downtown.
+  towers: ['#262a3a', '#2f3347', '#1f2230'],
+  neon: ['#ff3cac', '#2de2e6', '#f9c80e', '#7b5cff'],
+  neonPole: '#3a3d48',
+  // Rooftops.
+  acUnit: '#8a8f99',
+  acFan: '#3a3d44',
+  tankLeg: '#4a4d55',
+  tankWood: '#7a5638',
+  tankRoof: '#5a3f29',
+  mast: '#9aa0aa',
+  redLight: '#ff3030',
+  // Docks.
+  containers: ['#c2402f', '#2f6fb3', '#3a8f4f', '#d68b2a', '#6d6f75'],
+  crate: '#9a7148',
+  bollard: '#2c2c30',
+  bollardCap: '#e0b52a',
+  lampPole: '#5d616b',
+  lampHead: '#ffcf7a',
+  // Freeway.
+  streetPole: '#6a6e78',
+  streetHead: '#ffd27a',
+  signPost: '#8a8f99',
+  sign: '#2a8f58',
+  bush: '#1d3b26',
+  // Milk and oil, as ponds.
+  milk: '#fbfaf3',
+  oil: '#121216',
 };
+
+/** The four corners of a square, as the web's towers and tank legs sit at them. */
+const CORNERS: number[][] = [
+  [-1, -1],
+  [1, -1],
+  [-1, 1],
+  [1, 1],
+];
 
 /** A Part at `offset` within `root`, in SmoothPlastic. Its physics and queries are off, as the other scenery's are. */
 function place(parent: Instance, root: CFrame, offset: CFrame, size: Vector3, color: string, shape: Enum.PartType, shadow: boolean): Part {
@@ -415,6 +706,11 @@ function rock(parent: Instance, root: CFrame, offset: CFrame, size: Vector3, col
   mesh.MeshType = Enum.MeshType.Sphere;
   mesh.Parent = p;
   return p;
+}
+
+/** A ball of radius `radius` centred at `offset`. A Ball Part has to be uniform, so its diameter is all three sides. */
+function sphere(parent: Instance, root: CFrame, offset: CFrame, radius: number, color: string, shadow: boolean): Part {
+  return place(parent, root, offset, new Vector3(2 * radius, 2 * radius, 2 * radius), color, Enum.PartType.Ball, shadow);
 }
 
 /** A flat disc on the ground at height `y`, centred on the root. */
@@ -531,13 +827,217 @@ function buildObject(o: SceneryObject, parent: Instance): void {
       block(parent, root, new CFrame(0, CRACK_Y, 0), new Vector3(o.length, FLAT, 0.35), COLOR.crack, false);
       break;
     }
+    case 'block': {
+      block(parent, root, new CFrame(0, o.size / 2, 0), new Vector3(o.size, o.size, o.size), o.color, true);
+      if (o.top !== undefined) {
+        // The top block is 0.7 of the bottom one's size, sitting on it and turned about the vertical.
+        const t = o.size * 0.7;
+        block(
+          parent,
+          root,
+          new CFrame(0, o.size + t / 2, 0).mul(CFrame.Angles(0, o.top.turn, 0)),
+          new Vector3(t, t, t),
+          o.top.color,
+          true,
+        );
+      }
+      break;
+    }
+    case 'books': {
+      // Stacked one on another, each turned a little about the vertical.
+      let y = 0;
+      for (const book of o.books) {
+        block(
+          parent,
+          root,
+          new CFrame(0, y + book.height / 2, 0).mul(CFrame.Angles(0, book.turn, 0)),
+          new Vector3(book.width, book.height, book.depth),
+          book.color,
+          true,
+        );
+        y += book.height;
+      }
+      break;
+    }
+    case 'toyBall': {
+      sphere(parent, root, new CFrame(0, o.radius, 0), o.radius, o.color, true);
+      break;
+    }
+    case 'cereal': {
+      block(parent, root, new CFrame(0, o.height / 2, 0), new Vector3(o.width, o.height, o.depth), o.color, true);
+      // The front panel stands just proud of the box, so the two never share a face.
+      block(
+        parent,
+        root,
+        new CFrame(0, o.height * 0.55, o.depth / 2 + 0.02),
+        new Vector3(o.width * 0.6, o.height * 0.4, 0.04),
+        COLOR.cerealPanel,
+        true,
+      );
+      break;
+    }
+    case 'tin': {
+      // A metal tin with a paper label round its middle, a little wider than the tin.
+      standing(parent, root, new CFrame(0, o.height / 2, 0), o.height, 2 * o.radius, 2 * o.radius, COLOR.tinCan, true);
+      const label = 2 * o.radius * 1.04;
+      standing(parent, root, new CFrame(0, o.height / 2, 0), o.height * 0.6, label, label, o.label, true);
+      break;
+    }
+    case 'fruit': {
+      sphere(parent, root, new CFrame(0, o.radius, 0), o.radius, o.color, true);
+      break;
+    }
+    case 'castle': {
+      const s = o.scale;
+      block(parent, root, new CFrame(0, 0.8 * s, 0), new Vector3(2.4 * s, 1.6 * s, 2.4 * s), COLOR.sand, true);
+      for (const corner of CORNERS) {
+        standing(
+          parent,
+          root,
+          new CFrame(1.2 * s * corner[0], 1.1 * s, 1.2 * s * corner[1]),
+          2.2 * s,
+          s,
+          s,
+          COLOR.sandTower,
+          true,
+        );
+      }
+      break;
+    }
+    case 'bucket': {
+      // Open end up, wider at the top.
+      frustum(parent, root, 0, 1, [0.55, 0.55], [0.75, 0.75], o.color, true);
+      break;
+    }
+    case 'spade': {
+      // Lying on the sand: a handle along X with the blade at its end.
+      lying(parent, root, new CFrame(0, 0.08, 0), 1.4, 0.16, COLOR.trunk, true);
+      block(parent, root, new CFrame(1.05, 0.03, 0), new Vector3(0.7, 0.06, 0.6), o.color, true);
+      break;
+    }
+    case 'tyres': {
+      for (let i = 0; i < o.count; i++) {
+        standing(parent, root, new CFrame(0, (i + 0.5) * 0.5, 0), 0.5, 1.7, 1.7, COLOR.tyre, true);
+      }
+      // The hub sits on the top tyre, a little proud of it.
+      standing(parent, root, new CFrame(0, o.count * 0.5 + 0.02, 0), 0.04, 0.9, 0.9, COLOR.hub, true);
+      break;
+    }
+    case 'paint': {
+      standing(parent, root, new CFrame(0, o.height / 2, 0), o.height, 0.8, 0.8, COLOR.paintTin, true);
+      standing(parent, root, new CFrame(0, o.height + 0.04, 0), 0.08, 0.84, 0.84, o.lid, true);
+      break;
+    }
+    case 'toolbox': {
+      block(parent, root, new CFrame(0, 0.45, 0), new Vector3(2, 0.9, 0.9), COLOR.toolbox, true);
+      block(parent, root, new CFrame(0, 1.06, 0), new Vector3(1, 0.12, 0.12), COLOR.toolHandle, true);
+      block(parent, root, new CFrame(-0.44, 0.98, 0), new Vector3(0.12, 0.16, 0.12), COLOR.toolHandle, true);
+      block(parent, root, new CFrame(0.44, 0.98, 0), new Vector3(0.12, 0.16, 0.12), COLOR.toolHandle, true);
+      break;
+    }
+    case 'tower': {
+      block(parent, root, new CFrame(0, o.height / 2, 0), new Vector3(o.width, o.height, o.depth), o.color, true);
+      // Each band is a slice a little wider than the tower, so it shows as a lit line round all four sides.
+      const bands = 1 + math.floor(o.height / 3);
+      for (let k = 1; k <= bands; k++) {
+        const band = block(
+          parent,
+          root,
+          new CFrame(0, (o.height * k) / (bands + 1), 0),
+          new Vector3(o.width + 0.08, 0.18, o.depth + 0.08),
+          o.neon,
+          true,
+        );
+        band.Material = Enum.Material.Neon;
+      }
+      const cap = block(
+        parent,
+        root,
+        new CFrame(0, o.height, 0),
+        new Vector3(o.width + 0.12, 0.25, o.depth + 0.12),
+        o.neon,
+        true,
+      );
+      cap.Material = Enum.Material.Neon;
+      break;
+    }
+    case 'billboard': {
+      standing(parent, root, new CFrame(0, 1.5, 0), 3, 0.2, 0.2, COLOR.neonPole, true);
+      const board = block(parent, root, new CFrame(0, 3.4, 0), new Vector3(2.4, 1.2, 0.12), o.color, true);
+      board.Material = Enum.Material.Neon;
+      break;
+    }
+    case 'airCon': {
+      block(parent, root, new CFrame(0, 0.45, 0), new Vector3(o.width, 0.9, o.width), COLOR.acUnit, true);
+      // The fan sits on the unit, a little proud of its top.
+      standing(parent, root, new CFrame(0, 0.92, 0), 0.04, o.width * 0.7, o.width * 0.7, COLOR.acFan, true);
+      break;
+    }
+    case 'tank': {
+      for (const corner of CORNERS) {
+        standing(parent, root, new CFrame(0.8 * corner[0], 0.6, 0.8 * corner[1]), 1.2, 0.16, 0.16, COLOR.tankLeg, true);
+      }
+      standing(parent, root, new CFrame(0, 2.1, 0), 1.8, 2.4, 2.4, COLOR.tankWood, true);
+      cone(parent, root, 3.0, 0.6, 1.3, COLOR.tankRoof, true);
+      break;
+    }
+    case 'aerial': {
+      standing(parent, root, new CFrame(0, o.height / 2, 0), o.height, 0.12, 0.12, COLOR.mast, true);
+      const light = sphere(parent, root, new CFrame(0, o.height, 0), 0.18, COLOR.redLight, true);
+      light.Material = Enum.Material.Neon;
+      break;
+    }
+    case 'container': {
+      block(parent, root, new CFrame(0, 1.3, 0), new Vector3(6, 2.6, 2.4), o.color, true);
+      if (o.top !== undefined) {
+        block(
+          parent,
+          root,
+          new CFrame(0, 3.9, 0).mul(CFrame.Angles(0, o.top.turn, 0)),
+          new Vector3(6, 2.6, 2.4),
+          o.top.color,
+          true,
+        );
+      }
+      break;
+    }
+    case 'bollard': {
+      standing(parent, root, new CFrame(0, 0.35, 0), 0.7, 0.6, 0.6, COLOR.bollard, true);
+      standing(parent, root, new CFrame(0, 0.75, 0), 0.1, 0.72, 0.72, COLOR.bollardCap, true);
+      break;
+    }
+    case 'crate': {
+      const s = o.scale;
+      block(parent, root, new CFrame(0, s / 2, 0), new Vector3(s, s, s), COLOR.crate, true);
+      break;
+    }
+    case 'lamp': {
+      standing(parent, root, new CFrame(0, 2, 0), 4, 0.2, 0.2, COLOR.lampPole, true);
+      const head = block(parent, root, new CFrame(0, 4.1, 0), new Vector3(0.5, 0.2, 0.5), COLOR.lampHead, true);
+      head.Material = Enum.Material.Neon;
+      break;
+    }
+    case 'streetLight': {
+      // The arm reaches out along X, with the lamp hanging at its end.
+      standing(parent, root, new CFrame(0, 2.25, 0), 4.5, 0.2, 0.2, COLOR.streetPole, true);
+      block(parent, root, new CFrame(0.6, 4.45, 0), new Vector3(1.2, 0.1, 0.1), COLOR.streetPole, true);
+      const head = block(parent, root, new CFrame(1.15, 4.35, 0), new Vector3(0.6, 0.15, 0.3), COLOR.streetHead, true);
+      head.Material = Enum.Material.Neon;
+      break;
+    }
+    case 'sign': {
+      standing(parent, root, new CFrame(-1.2, 1.3, 0), 2.6, 0.16, 0.16, COLOR.signPost, true);
+      standing(parent, root, new CFrame(1.2, 1.3, 0), 2.6, 0.16, 0.16, COLOR.signPost, true);
+      block(parent, root, new CFrame(0, 2.6, 0), new Vector3(3, 1.4, 0.1), COLOR.sign, true);
+      break;
+    }
+    case 'bush': {
+      const s = o.scale;
+      rock(parent, root, new CFrame(0, 0.3 * s, 0), new Vector3(1.44 * s, 0.96 * s, 1.32 * s), COLOR.bush, true);
+      break;
+    }
     case 'pond': {
-      if (o.style === 'lava') {
-        blob(o.x, LAVA_Y, o.z, o.radius, jitterSource(o.jitter), 0, (w) => {
-          w.Color = Color3.fromHex(COLOR.lava);
-          w.Material = Enum.Material.Neon;
-        }, parent);
-      } else {
+      if (o.style === 'water') {
         // As the track's puddles: a pale rim, with a translucent pool a little smaller and higher.
         blob(o.x, POND_RIM_Y, o.z, o.radius, jitterSource(o.jitter), 0, (w) => {
           w.Color = Color3.fromHex(COLOR.puddleRim);
@@ -546,6 +1046,22 @@ function buildObject(o: SceneryObject, parent: Instance): void {
         blob(o.x, POND_POOL_Y, o.z, o.radius * 0.86, jitterSource(o.jitter), 0, (w) => {
           w.Color = Color3.fromHex(COLOR.puddlePool);
           w.Transparency = 0.4;
+        }, parent);
+      } else if (o.style === 'lava') {
+        blob(o.x, LAVA_Y, o.z, o.radius, jitterSource(o.jitter), 0, (w) => {
+          w.Color = Color3.fromHex(COLOR.lava);
+          w.Material = Enum.Material.Neon;
+        }, parent);
+      } else if (o.style === 'milk') {
+        // One opaque blob, at the same height as the lava.
+        blob(o.x, LAVA_Y, o.z, o.radius, jitterSource(o.jitter), 0, (w) => {
+          w.Color = Color3.fromHex(COLOR.milk);
+        }, parent);
+      } else {
+        // One blob of oil, a little reflective.
+        blob(o.x, LAVA_Y, o.z, o.radius, jitterSource(o.jitter), 0, (w) => {
+          w.Color = Color3.fromHex(COLOR.oil);
+          w.Reflectance = 0.3;
         }, parent);
       }
       break;

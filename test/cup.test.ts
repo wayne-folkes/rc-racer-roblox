@@ -13,13 +13,13 @@ const scorer = (name: string, userId = 0): Scorer => ({
   userId,
 });
 
-test('a vote offers both cups and two different quick races on real tracks', () => {
+test('a vote offers all four cups and two different quick races on real tracks', () => {
   for (let seed = 1; seed <= 50; seed++) {
     const options = voteOptions(seededRandom(seed));
-    expect(options.map((o) => o.kind)).toEqual(['cup', 'cup', 'quick', 'quick']);
-    expect(options.slice(0, 2).map((o) => o.id)).toEqual(['classic', 'space']);
-    expect(options[2].id).not.toBe(options[3].id);
-    for (const o of options.slice(2)) expect(trackById(o.id)).toBeDefined();
+    expect(options.map((o) => o.kind)).toEqual(['cup', 'cup', 'cup', 'cup', 'quick', 'quick']);
+    expect(options.slice(0, 4).map((o) => o.id)).toEqual(['classic', 'space', 'toybox', 'city']);
+    expect(options[4].id).not.toBe(options[5].id);
+    for (const o of options.slice(4)) expect(trackById(o.id)).toBeDefined();
   }
 });
 
